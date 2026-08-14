@@ -35,7 +35,7 @@ def test_jushuitan_customer_conversion_priority():
     }
 
 
-def test_jushuitan_preview_uses_confirmed_sales_and_refund_formulas():
+def test_jushuitan_preview_uses_sales_and_return_amounts_directly():
     rows = [
         PreparedRow(
             2,
@@ -43,8 +43,9 @@ def test_jushuitan_preview_uses_confirmed_sales_and_refund_formulas():
                 "订单状态": "已发货",
                 "销售数量": "2",
                 "销售金额": "19.995",
-                "实退数量": "1",
-                "实退金额": "9.995",
+                "实退数量": "3",
+                "退货金额": "9.995",
+                "实退金额": "999.00",
                 "分销商": "",
                 "店铺": "拼多多童鞋店",
                 "商品编码": "SKU-1",
@@ -60,7 +61,7 @@ def test_jushuitan_preview_uses_confirmed_sales_and_refund_formulas():
                 "销售数量": "9",
                 "销售金额": "99.00",
                 "实退数量": "9",
-                "实退金额": "99.00",
+                "退货金额": "99.00",
                 "分销商": "取消订单客户",
                 "店铺": "取消订单店铺",
                 "商品编码": "SKU-CANCELLED",
@@ -73,12 +74,12 @@ def test_jushuitan_preview_uses_confirmed_sales_and_refund_formulas():
 
     sales, refunds, summary = classify_rows(rows)
 
-    assert sales[date(2026, 7, 28)] == Decimal("39.99")
+    assert sales[date(2026, 7, 28)] == Decimal("20.00")
     assert refunds[date(2026, 7, 28)] == Decimal("10.00")
     assert summary["valid_sales_rows"] == 1
     assert summary["refund_rows"] == 1
     assert summary["valid_customer_rows"] == 1
     assert summary["valid_product_rows"] == 1
-    assert summary["gross_sales_amount"] == "39.99"
+    assert summary["gross_sales_amount"] == "20.00"
     assert summary["refund_amount"] == "10.00"
     assert summary["gross_product_quantity"] == "2"

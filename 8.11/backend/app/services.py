@@ -10,7 +10,7 @@ from app.periods import Grain, period_window, previous_window, recent_windows
 from app.repositories import CustomerRepository, DashboardRepository, SettingsRepository, amount_text
 from app.responses import ApiError
 from app.schemas import UserContext
-from app.settings import get_settings
+from app.settings import ai_settings_for_role, get_settings, save_ai_settings_for_role
 
 
 HEALTH_ORDER = [*CUSTOMER_HEALTH_STATUSES, "未评分"]
@@ -256,17 +256,47 @@ class SettingsService:
         return self.repo.update_health_rules(user.group_key, normalized_rules)
 
     def api_setting(self, user: UserContext, include_secret: bool = False) -> dict[str, Any]:
-        settings = get_settings()
+        try:
+            config = ai_settings_for_role(user.role)
+        except ValueError as exc:
+            raise ApiError(403, "ROLE_FORBIDDEN", "当前账号没有可用的AI配置范围。") from exc
         result = {
             "scope_key": "manager" if user.role == "manager" else user.group_key,
-            "base_url": settings.ai_base_url,
-            "model_name": settings.ai_model_name or None,
-            "api_key_masked": "••••••••" if settings.ai_api_key else "",
-            "configured": bool(settings.ai_base_url and settings.ai_api_key),
+            "base_url": config["base_url"],
+            "model_name": config["model_name"] or None,
+            "api_key_masked": "••••••••" if config["api_key"] else "",
+            "configured": bool(config["base_url"] and config["api_key"]),
         }
-        if include_secret and settings.ai_api_key:
-            result["api_key"] = settings.ai_api_key
+        if include_secret and config["api_key"]:
+            result["api_key"] = config["api_key"]
         return result
 
-    def update_api_setting(self, user: UserContext, base_url: str, api_key: str | None, model_name: str | None) -> None:
-        raise ApiError(409, "SETTINGS_READ_ONLY", "AI 接口配置请写入后端 .env，避免由浏览器修改服务端密钥。")
+    def resolve_api_setting(
+        self,
+        user: UserContext,
+        base_url: str,
+        api_key: str | None,
+        model_name: str | None,
+    ) -> dict[str, str]:
+        current = self.api_setting(user, include_secret=True)
+        resolved_api_key = (api_key or "").strip() or str(current.get("api_key") or "")
+        resolved_model = (model_name or "").strip() or str(current.get("model_name") or "") or get_settings().ai_default_model
+        if not resolved_api_key:
+            raise ApiError(422, "AI_API_KEY_REQUIRED", "首次配置时必须填写api_key。")
+        return {
+            "base_url": base_url.strip().rstrip("/"),
+            "api_key": resolved_api_key,
+            "model_name": resolved_model,
+        }
+
+    def update_api_setting(self, user: UserContext, config: dict[str, str]) -> dict[str, Any]:
+        try:
+            save_ai_settings_for_role(
+                user.role,
+                config["base_url"],
+                config["api_key"],
+                config["model_name"],
+            )
+        except ValueError as exc:
+            raise ApiError(422, "AI_CONFIG_INVALID", str(exc)) from exc
+        return self.api_setting(user)

@@ -4,7 +4,6 @@ import hashlib
 import json
 import sys
 from collections import Counter
-from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -14,11 +13,11 @@ import psycopg
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-BACKEND_SRC = PROJECT_ROOT / "8.4" / "src"
-if str(BACKEND_SRC) not in sys.path:
-    sys.path.insert(0, str(BACKEND_SRC))
+BACKEND_ROOT = PROJECT_ROOT / "8.11" / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
-from backend.core.config import load_settings  # noqa: E402
+from app.settings import get_settings  # noqa: E402
 
 
 DATA_DIR = PROJECT_ROOT / "data" / "阿里巴巴"
@@ -214,7 +213,7 @@ def main() -> None:
         raise AssertionError(f"原始字段不是78列：{len(SOURCE_HEADERS)}")
     preflight_files()
 
-    settings = replace(load_settings().database, database=TARGET_DATABASE)
+    settings = get_settings()
     quoted_columns = ", ".join(quote_identifier(header) for header in SOURCE_HEADERS)
     copy_sql = f"COPY {TARGET_SCHEMA}.{TARGET_TABLE} ({quoted_columns}) FROM STDIN"
     source_rows: Counter[str] = Counter()
@@ -236,7 +235,10 @@ def main() -> None:
     refund_amount_index = SOURCE_HEADERS.index("实退金额")
 
     print("阶段1/3：开启事务并将92列表替换为81列表", flush=True)
-    with psycopg.connect(settings.dsn, connect_timeout=settings.connect_timeout) as connection:
+    with psycopg.connect(
+        settings.database_url,
+        connect_timeout=settings.database_connect_timeout,
+    ) as connection:
         try:
             connection.execute("SET statement_timeout = 0")
             connection.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"{TARGET_DATABASE}.{TARGET_SCHEMA}.{TARGET_TABLE}",))

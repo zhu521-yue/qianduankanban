@@ -25,7 +25,7 @@ def _text(value: Any) -> str:
 
 def _money(value: Any) -> Decimal | None:
     text = _text(value).replace(",", "").replace("¥", "").replace("￥", "")
-    if not text or text in {"-", "--", "65"}:
+    if not text or text in {"-", "--"}:
         return None
     try:
         return Decimal(text).quantize(Decimal("0.01"))

@@ -3,13 +3,13 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Any
 from uuid import uuid4
 
-import httpx
 from fastapi import Cookie, Depends, FastAPI, File, Form, Query, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from psycopg import Error as PsycopgError
 
+from app.ai_provider import request_ai_completion
 from app.auth import authenticate, issue_session, read_session
 from app.catalog import STORES, allowed_stores, scope_options
 from app.database import close_pool, connection, open_pool
@@ -276,11 +276,31 @@ def ai_setting(request: Request, user: UserContext = Depends(current_user)):
 
 
 @app.put("/api/v1/settings/ai", tags=["settings"])
-def update_ai_setting(body: ApiSettingsUpdate, request: Request, user: UserContext = Depends(current_user)):
+async def update_ai_setting(body: ApiSettingsUpdate, request: Request, user: UserContext = Depends(current_user)):
     with connection() as conn:
-        SettingsService(conn).update_api_setting(user, str(body.base_url).rstrip("/"), body.api_key, body.model_name)
-        conn.commit()
-    return ok(message="AI 接口设置已保存", request=request)
+        service = SettingsService(conn)
+        config = service.resolve_api_setting(user, str(body.base_url), body.api_key, body.model_name)
+    await request_ai_completion(
+        config,
+        [{"role": "user", "content": "这是配置保存前校验，请只回复：连接成功"}],
+    )
+    data = service.update_api_setting(user, config)
+    return ok(data, message="AI接口测试通过并已保存", request=request)
+
+
+@app.post("/api/v1/settings/ai/test", tags=["settings"])
+async def test_ai_setting(body: ApiSettingsUpdate, request: Request, user: UserContext = Depends(current_user)):
+    with connection() as conn:
+        config = SettingsService(conn).resolve_api_setting(user, str(body.base_url), body.api_key, body.model_name)
+    answer = await request_ai_completion(
+        config,
+        [{"role": "user", "content": "这是AI接口连接测试，请只回复：连接成功"}],
+    )
+    return ok(
+        {"model_name": config["model_name"], "reply_preview": answer[:200]},
+        message="AI接口连接测试成功",
+        request=request,
+    )
 
 
 @app.post("/api/v1/ai/chat", tags=["ai"])
@@ -303,18 +323,7 @@ async def ai_chat(body: ChatRequest, request: Request, user: UserContext = Depen
     ]
     messages.extend(item for item in body.history[-10:] if item.get("role") in {"user", "assistant"} and item.get("content"))
     messages.append({"role": "user", "content": body.message})
-    payload = {"model": api_config.get("model_name") or "default", "messages": messages, "temperature": 0.2}
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                f"{api_config['base_url'].rstrip('/')}/chat/completions",
-                headers={"Authorization": f"Bearer {api_config['api_key']}", "Content-Type": "application/json"},
-                json=payload,
-            )
-            response.raise_for_status()
-            answer = response.json()["choices"][0]["message"]["content"]
-    except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
-        raise ApiError(502, "AI_PROVIDER_ERROR", "AI 服务暂时不可用，请稍后重试。") from exc
+    answer = await request_ai_completion(api_config, messages)
     return ok({"answer": answer, "mode": "ai"}, request=request)
 
 

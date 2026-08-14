@@ -14,10 +14,11 @@ _pool: ConnectionPool | None = None
 def open_pool() -> None:
     global _pool
     if _pool is None:
+        settings = get_settings()
         _pool = ConnectionPool(
-            conninfo=get_settings().database_url,
-            min_size=1,
-            max_size=10,
+            conninfo=settings.database_url,
+            min_size=settings.database_pool_min_size,
+            max_size=settings.database_pool_max_size,
             kwargs={"row_factory": dict_row},
             open=True,
         )

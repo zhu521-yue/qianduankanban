@@ -30,10 +30,13 @@ test("uses the backend API for authentication and every business data module", a
     readFile(new URL("../app/api.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/CustomerDimensionPanel.tsx", import.meta.url), "utf8"),
   ]);
-  for (const endpoint of ["/auth/login", "/auth/session", "/auth/logout", "/meta/options", "/dashboard?", "/customers?", "/settings/health-rules", "/settings/ai", "/ai/chat", "/uploads/sales"]) {
+  for (const endpoint of ["/auth/login", "/auth/session", "/auth/logout", "/meta/options", "/dashboard?", "/customers?", "/settings/health-rules", "/settings/ai", "/settings/ai/test", "/ai/chat", "/uploads/sales"]) {
     assert.match(client, new RegExp(endpoint.replaceAll("/", "\\/")));
   }
   assert.match(client, /credentials: "include"/);
+  assert.match(client, /window\.location\.hostname/);
+  assert.match(client, /NEXT_PUBLIC_API_PORT/);
+  assert.doesNotMatch(client, /http:\/\/127\.0\.0\.1:8000\/api\/v1/);
   assert.match(page, /api\.dashboard/);
   assert.match(page, /api\.customers/);
   assert.match(page, /api\.customer/);
@@ -98,6 +101,11 @@ test("keeps customer health rule statuses fixed and saves through the backend", 
   assert.match(page, /user\.role !== "manager"/);
   assert.match(page, /user\.role === "manager"/);
   assert.match(page, /主管端 AI 大模型相关设置/);
+  assert.match(page, /测试连接/);
+  assert.match(page, /保存配置/);
+  assert.match(page, /当前账号独立配置/);
+  assert.match(page, /api\.testAiSetting/);
+  assert.match(page, /api\.updateAiSetting/);
   assert.match(client, /method: "PUT"/);
   assert.match(client, /customer_health_status/);
   assert.match(client, /follow_up_action/);

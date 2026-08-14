@@ -125,6 +125,8 @@ export type HealthRuleSaveResult = {
   updated_health_rows: Record<string, number>;
 };
 export type AiSetting = { scope_key: string; base_url: string; model_name: string | null; api_key_masked: string; configured: boolean };
+export type AiSettingInput = { base_url: string; api_key: string | null; model_name: string | null };
+export type AiSettingTestResult = { model_name: string; reply_preview: string };
 export type UploadStorePeriodChange = {
   period_start: string;
   period_end: string;
@@ -247,8 +249,10 @@ export class ApiRequestError extends Error {
 function apiBase() {
   const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
   if (configured) return configured;
-  if (typeof window !== "undefined") return `${window.location.protocol}//${window.location.hostname}:8000/api/v1`;
-  return "http://127.0.0.1:8000/api/v1";
+  if (typeof window === "undefined") throw new Error("服务端渲染阶段无法推断后端 API 地址");
+  const port = process.env.NEXT_PUBLIC_API_PORT?.trim();
+  if (!port) throw new Error("项目根目录 .env 未配置 NEXT_PUBLIC_API_PORT");
+  return `${window.location.protocol}//${window.location.hostname}:${port}/api/v1`;
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -283,6 +287,8 @@ export const api = {
   healthRules: () => request<{ groups: HealthRuleGroup[] }>("/settings/health-rules"),
   updateHealthRules: (rules: Pick<HealthRule, "customer_health_status" | "state_instructions" | "follow_up_action">[]) => request<HealthRuleSaveResult>("/settings/health-rules", { method: "PUT", body: JSON.stringify({ rules }) }),
   aiSetting: () => request<AiSetting>("/settings/ai"),
+  testAiSetting: (values: AiSettingInput) => request<AiSettingTestResult>("/settings/ai/test", { method: "POST", body: JSON.stringify(values) }),
+  updateAiSetting: (values: AiSettingInput) => request<AiSetting>("/settings/ai", { method: "PUT", body: JSON.stringify(values) }),
   chat: (values: { store_key: string; customer_id: string; as_of: string; message: string; history: { role: "user" | "assistant"; content: string }[] }) => request<{ answer: string; mode: string }>("/ai/chat", { method: "POST", body: JSON.stringify(values) }),
   uploadPreview: (storeKey: string, file: File) => {
     const form = new FormData();

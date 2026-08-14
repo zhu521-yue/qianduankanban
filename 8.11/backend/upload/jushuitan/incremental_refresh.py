@@ -74,7 +74,7 @@ def _prepare_fact(conn: Connection) -> None:
                 NULLIF(REGEXP_REPLACE(COALESCE(raw."销售金额"::text, ''), '[,￥¥[:space:]]', '', 'g'), '') AS sales_amount_text,
                 NULLIF(REGEXP_REPLACE(COALESCE(raw."销售数量"::text, ''), '[,[:space:]]', '', 'g'), '') AS sales_quantity_text,
                 NULLIF(REGEXP_REPLACE(COALESCE(raw."实退数量"::text, ''), '[,[:space:]]', '', 'g'), '') AS refund_quantity_text,
-                NULLIF(REGEXP_REPLACE(COALESCE(raw."实退金额"::text, ''), '[,￥¥[:space:]]', '', 'g'), '') AS refund_amount_text,
+                NULLIF(REGEXP_REPLACE(COALESCE(raw."退货金额"::text, ''), '[,￥¥[:space:]]', '', 'g'), '') AS refund_amount_text,
                 NULLIF(BTRIM(COALESCE(raw."商品编码"::text, ''), E' \t\n\r'), '') AS product_code_text,
                 BTRIM(COALESCE(raw."分销商"::text, ''), E' \t\n\r') AS distributor_text,
                 BTRIM(COALESCE(raw."店铺"::text, ''), E' \t\n\r') AS shop_text,
@@ -115,8 +115,8 @@ def _prepare_fact(conn: Connection) -> None:
             FROM cleaned
         )
         SELECT transaction_date,
-               ROUND(sales_quantity * sales_amount, 2)::numeric(18,2) AS transaction_amount,
-               ROUND(refund_quantity * refund_amount, 2)::numeric(18,2) AS refund_amount,
+               ROUND(sales_amount, 2)::numeric(18,2) AS transaction_amount,
+               ROUND(refund_amount, 2)::numeric(18,2) AS refund_amount,
                sales_quantity::numeric(18,4) AS product_quantity,
                CASE WHEN product_code_text IS NOT NULL AND product_code_text <> '-'
                     THEN product_code_text END AS product_code,
@@ -131,7 +131,7 @@ def _prepare_fact(conn: Connection) -> None:
                     ]) THEN '戎井'
                     WHEN shop_text <> '' THEN shop_text
                END AS customer_id,
-               order_status IN ('已发货', '已取消') AS is_sale,
+               order_status = '已发货' AS is_sale,
                refund_quantity <> 0 OR refund_amount <> 0 AS is_refund
         FROM typed
     ''')

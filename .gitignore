@@ -1,5 +1,7 @@
 # Local source data: keep on this computer, never commit to Git.
 /data/
+**/increaseData/
+**/outputs/
 
 # Local secrets.
 **/.env
@@ -24,18 +26,8 @@
 # Codex and spreadsheet temporary files.
 **/.codex-tmp/
 **/.codex_tmp/
-/.codex_tmp_report_*/
-/.codex_spreadsheet_*/
-
-# Uploaded business data and generated analysis artifacts.
-**/increaseData/
-**/outputs/
-**/output/
-*.xlsx
-*.xls
-*.csv
-*.ndjson
-*.jsonl
+**/.codex_tmp_report_*/
+**/.codex_spreadsheet_*/
 
 # Local logs and OS files.
 *.log

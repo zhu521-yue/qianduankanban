@@ -257,7 +257,7 @@ def build_preview(
         "source_kind": "weidian_sales_snapshot",
         "source_classification": source_summary,
         "policies": {
-            "sales_file": "replace_each_existing_business_date_and_insert_each_new_business_date",
+            "sales_file": "skip_each_business_date_that_already_exists_and_insert_new_dates_only",
             "refund_in_sales_file": "persist_product_refund_amount_and_refresh_refund_tables",
             "future_refund_file": "update_existing_raw_records_only",
             "sales_and_refunds_are_separate_metrics": True,
