@@ -1,0 +1,1146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>平台订单字段清单</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --panel: rgba(255, 255, 255, 0.86);
+      --panel-solid: #ffffff;
+      --text: #172033;
+      --muted: #6b7280;
+      --line: #e6e8ef;
+      --primary: #2563eb;
+      --primary-soft: #eaf1ff;
+      --accent: #14b8a6;
+      --shadow: 0 18px 48px rgba(15, 23, 42, 0.10);
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% 8%, rgba(37, 99, 235, 0.16), transparent 34%),
+        radial-gradient(circle at 90% 6%, rgba(20, 184, 166, 0.16), transparent 30%),
+        linear-gradient(180deg, #fbfcff 0%, var(--bg) 42%, #f2f5fb 100%);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 24px;
+      width: min(1440px, calc(100vw - 40px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 20px;
+      height: calc(100vh - 40px);
+      overflow: auto;
+      padding: 20px;
+      border: 1px solid rgba(230, 232, 239, 0.88);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      color: #fff;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      box-shadow: 0 10px 24px rgba(37, 99, 235, 0.28);
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    .brand p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .search {
+      position: relative;
+      margin: 18px 0;
+    }
+
+    .search input {
+      width: 100%;
+      height: 44px;
+      padding: 0 14px 0 40px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      outline: none;
+      color: var(--text);
+      background: #fff;
+      font-size: 14px;
+      transition: border 0.2s, box-shadow 0.2s;
+    }
+
+    .search input:focus {
+      border-color: rgba(37, 99, 235, 0.65);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.10);
+    }
+
+    .search span {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin: 16px 0 18px;
+    }
+
+    .summary-card {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+    }
+
+    .summary-card strong {
+      display: block;
+      font-size: 22px;
+      line-height: 1.1;
+    }
+
+    .summary-card span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .nav-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 18px 0 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .nav-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .nav-list a {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 11px 12px;
+      border: 1px solid transparent;
+      border-radius: 14px;
+      color: var(--text);
+      text-decoration: none;
+      background: rgba(255, 255, 255, 0.62);
+    }
+
+    .nav-list a:hover,
+    .nav-list a.active {
+      border-color: rgba(37, 99, 235, 0.22);
+      background: var(--primary-soft);
+    }
+
+    .nav-list .name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .nav-list .count {
+      flex: 0 0 auto;
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .main {
+      min-width: 0;
+    }
+
+    .hero {
+      padding: 30px;
+      border: 1px solid rgba(230, 232, 239, 0.90);
+      border-radius: 28px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,255,255,0.78));
+      box-shadow: var(--shadow);
+    }
+
+    .hero h2 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 46px);
+      letter-spacing: -0.04em;
+    }
+
+    .hero p {
+      max-width: 760px;
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.8;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: #fff;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .section-list {
+      display: grid;
+      gap: 18px;
+      margin-top: 22px;
+    }
+
+    .table-card {
+      overflow: hidden;
+      border: 1px solid rgba(230, 232, 239, 0.92);
+      border-radius: 24px;
+      background: var(--panel-solid);
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.07);
+    }
+
+    .table-card header {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 20px 22px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #fff, #fbfcff);
+    }
+
+    .table-card h3 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: -0.02em;
+    }
+
+    .table-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 9px;
+      border-radius: 999px;
+      color: var(--primary);
+      background: var(--primary-soft);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .copy-btn {
+      height: 36px;
+      padding: 0 13px;
+      border: 1px solid rgba(37, 99, 235, 0.22);
+      border-radius: 12px;
+      color: var(--primary);
+      background: #fff;
+      cursor: pointer;
+      font-weight: 750;
+    }
+
+    .copy-btn:hover {
+      background: var(--primary-soft);
+    }
+
+    .fields {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+      padding: 18px;
+    }
+
+    .field {
+      min-height: 42px;
+      padding: 11px 12px;
+      border: 1px solid #e9ecf3;
+      border-radius: 14px;
+      background: #fbfcff;
+      color: #243044;
+      font-size: 13px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+
+    .field mark {
+      padding: 0 2px;
+      border-radius: 4px;
+      color: inherit;
+      background: rgba(250, 204, 21, 0.45);
+    }
+
+    .empty {
+      display: none;
+      padding: 46px 20px;
+      text-align: center;
+      color: var(--muted);
+      border: 1px dashed var(--line);
+      border-radius: 24px;
+      background: rgba(255,255,255,0.7);
+    }
+
+    .toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 10;
+      transform: translateY(20px);
+      opacity: 0;
+      padding: 12px 14px;
+      border-radius: 14px;
+      color: #fff;
+      background: #111827;
+      box-shadow: var(--shadow);
+      pointer-events: none;
+      transition: 0.22s ease;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    @media (max-width: 980px) {
+      .shell { grid-template-columns: 1fr; width: min(100vw - 24px, 760px); }
+      .sidebar { position: static; height: auto; }
+      .fields { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">F</div>
+        <div>
+          <h1>订单字段清单</h1>
+          <p>独立静态展示页</p>
+        </div>
+      </div>
+
+      <label class="search" for="searchInput">
+        <span>⌕</span>
+        <input id="searchInput" type="search" placeholder="搜索平台 / 字段名，例如：订单号" autocomplete="off" />
+      </label>
+
+      <div class="summary-grid">
+        <div class="summary-card">
+          <strong id="tableCount">0</strong>
+          <span>表 / 平台</span>
+        </div>
+        <div class="summary-card">
+          <strong id="fieldCount">0</strong>
+          <span>字段总数</span>
+        </div>
+      </div>
+
+      <div class="nav-title">
+        <span>目录</span>
+        <span id="visibleCount">0</span>
+      </div>
+      <ul id="navList" class="nav-list"></ul>
+    </aside>
+
+    <main class="main">
+      <section class="hero">
+        <h2>平台订单字段清单</h2>
+        <p>把 Markdown 字段清单转成可浏览的前端页面。左侧可以快速定位平台，顶部搜索可以同时匹配平台名和字段名，每张表支持复制全部字段。</p>
+        <div class="toolbar">
+          <span class="pill">单文件 HTML</span>
+          <span class="pill">无需接口</span>
+          <span class="pill">无需项目构建</span>
+          <span class="pill" id="largestTable">最大字段表：-</span>
+        </div>
+      </section>
+
+      <section id="sectionList" class="section-list"></section>
+      <div id="emptyState" class="empty">没有匹配到平台或字段，请换个关键词。</div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast">已复制字段</div>
+
+  <script id="fieldSource" type="text/plain"># 平台订单字段清单
+
+微店童装户外店
+---------------------------
+- 订单号
+- 订单下单时间
+- 订单发货时间
+- 订单确认收货时间
+- 订单完成结算时间
+- 订单状态
+- 发货方式
+- 收件人姓名
+- 收件人地址
+- 省
+- 市
+- 区
+- 收件人手机
+- 买家备注
+- 商家备注
+- 打标颜色
+- 商品总价
+- 订单实际支付金额
+- 订单实际收款金额
+- 订单运费
+- 商品优惠
+- 跨店优惠
+- 商品改价
+- 积分抵扣
+- 支付方式
+- 支付时间
+- 交易单号
+- 物流公司
+- 快递单号
+- 技术服务费
+- 技术服务费（将以人气卡形式返还）
+- 运费险预计投保费用
+- 带货方式
+- 带货账号类型
+- 带货账号昵称
+- 带货ID
+- 带货费用渠道
+- 带货费用类型
+- 带货费用
+- 带货佣金率
+- 企微企业ID
+- 企微工号
+- 导购最近分享时间
+- 企业微信加密id
+- 企微备注
+- 礼物单号
+- 商品名称
+- 商品编码(平台)
+- 商品编码(自定义)
+- SKU编码(自定义)
+- 商品属性
+- 商品价格(单件)
+- 商品实际价格(单件)
+- 商品实际价格(总共)
+- 是否预售
+- 商品数量
+- 商品平台券优惠
+- 商品平均运费
+- 活动商家补贴
+- 定制信息
+- 定制预览图
+- 商品发货
+- 商品售后
+- 商品已退款金额
+
+快团团 - 新主体账户
+---------------------------
+- 跟团号
+- 订单号
+- 子订单号
+- 创单时间
+- 支付时间
+- 团长
+- 团购标题
+- 商品名称
+- 规格
+- 数量
+- 商品编码
+- 商品金额
+- 运费
+- 已退款+退款中
+- 退款时间
+- 订单状态
+- 支付状态
+- 支付单号
+- 服务消费单号
+- 物流单号（必填）
+- 物流公司（必填）
+- 发出物流时间
+- 最后更新时间
+- 最后更新物流
+- 团员备注
+- 团长备注
+- 供货商备注
+- 下单人
+- 收货人
+- 联系电话
+- 打码手机号
+- 省
+- 市
+- 区
+- 详细地址
+
+快团团 - 老主体账号
+---------------------------
+- 跟团号
+- 订单号
+- 子订单号
+- 创单时间
+- 支付时间
+- 团长
+- 团购标题
+- 商品名称
+- 规格
+- 数量
+- 商品编码
+- 商品金额
+- 运费
+- 已退款+退款中
+- 退款时间
+- 订单状态
+- 支付状态
+- 支付单号
+- 服务消费单号
+- 物流单号（必填）
+- 物流公司（必填）
+- 发出物流时间
+- 最后更新时间
+- 最后更新物流
+- 团员备注
+- 团长备注
+- 供货商备注
+- 下单人
+- 收货人
+- 联系电话
+- 打码手机号
+- 省
+- 市
+- 区
+- 详细地址
+- 不支持7天无理由退换
+
+快手小店
+---------------------------
+- 订单号
+- 赠品订单号
+- 活动订单编号
+- 订单创建时间
+- 订单支付时间
+- 预售定金支付时间
+- 订单状态
+- 实付款
+- 快递费
+- 店铺优惠
+- 平台补贴
+- 主播补贴
+- 混资活动优惠
+- 支付优惠
+- 支付方式
+- 成交数量
+- 买家留言
+- 账号类型
+- 账号明细
+- 订单备注
+- 旗帜颜色
+- 售后状态
+- 活动订单
+- 预售/承诺发货时间
+- 订单载体
+- 国补类型
+- 商品名称
+- 商品ID
+- 商品规格
+- SKU编码
+- 商品单价
+- 渠道
+- CPS达人ID
+- CPS达人昵称
+- 预估推广佣金
+- 预估推广者分佣比例
+- 团长ID
+- 团长昵称
+- 快赚客ID
+- 快赚客昵称
+- 授权推广者ID
+- 授权推广者昵称
+- 收货人姓名
+- 收货人电话
+- 收货地址-省
+- 收货地址-市
+- 收货地址-区
+- 收货地址-街道
+- 收货地址
+- 发货时间
+- 快递公司
+- 快递单号
+- 物流信息
+- 集运类型
+- 直邮类型
+- 仓库名称
+- 仓库地址
+- 发货类型
+- 实名姓名
+- 服务门店ID
+- 服务门店名称
+- 服务门店地址
+- 国补/类国补/消费券
+- 订单销售主体
+
+抖店 - 儿童服饰旗舰店
+---------------------------
+- 主订单编号
+- 子订单编号
+- 选购商品
+- 商品规格
+- 商品数量
+- 商品ID
+- 商家编码
+- 商品单价
+- 订单应付金额
+- 运费
+- 优惠总金额
+- 平台优惠
+- 商家优惠
+- 达人优惠
+- 商家改价
+- 支付优惠
+- 红包抵扣
+- 支付方式
+- 手续费
+- 收件人
+- 收件人手机号
+- 省
+- 市
+- 区
+- 街道
+- 详细地址
+- 是否修改过地址
+- 地址修改时段
+- 买家留言
+- 订单提交时间
+- 旗帜颜色
+- 商家备注
+- 订单完成时间
+- 支付完成时间
+- APP渠道
+- 流量来源
+- 订单状态
+- 承诺发货时间
+- 订单类型
+- 鲁班落地页ID
+- 达人ID
+- 达人昵称
+- 所属门店ID
+- 售后状态
+- 取消原因
+- 预约发货时间
+- 仓库ID
+- 仓库名称
+- 序列号
+- 是否安心购
+- 广告渠道
+- 流量类型
+- 流量体裁
+- 流量渠道
+- 发货主体
+- 发货主体明细
+- 发货时间
+- 降价类优惠
+- 平台实际承担优惠金额
+- 商家实际承担优惠金额
+- 达人实际承担优惠金额
+- 预计送达时间
+- 是否平台仓自流转
+- 车型
+- 商品69码
+- 发货SN码
+- 发货IMEI码1
+- 发货IMEI码2
+- 是否福袋订单
+- 福袋采购订单号
+- 福袋采购订单状态
+- 福袋采购订单采购方ID
+- 福袋采购订单采购方名称
+- 福袋采购订单创建时间
+- 福袋采购订单支付时间
+- 福袋采购订单订单应付金额
+- 福袋采购订单订单实际付款金额
+- 福袋采购订单订单优惠金额
+- 福袋采购订单商品ID
+- 福袋采购订单商品名称
+- 福袋采购订单商品单价
+- 福袋采购订单商品数量
+- 福袋采购订单核销数量
+- 福袋采购订单结算数量
+- 预约送达时间
+- 建议发货时间（起）
+- 建议发货时间（止）
+- 物流SN码
+- 物流IMEI码1
+- 物流IMEI码2
+
+抖店 - 抖店kocotree服饰配件店
+---------------------------
+- 主订单编号
+- 子订单编号
+- 选购商品
+- 商品规格
+- 商品数量
+- 商品ID
+- 商家编码
+- 商品单价
+- 订单应付金额
+- 运费
+- 优惠总金额
+- 平台优惠
+- 商家优惠
+- 达人优惠
+- 商家改价
+- 支付优惠
+- 红包抵扣
+- 支付方式
+- 手续费
+- 收件人
+- 收件人手机号
+- 省
+- 市
+- 区
+- 街道
+- 详细地址
+- 是否修改过地址
+- 地址修改时段
+- 买家留言
+- 订单提交时间
+- 旗帜颜色
+- 商家备注
+- 订单完成时间
+- 支付完成时间
+- APP渠道
+- 流量来源
+- 订单状态
+- 承诺发货时间
+- 订单类型
+- 鲁班落地页ID
+- 达人ID
+- 达人昵称
+- 所属门店ID
+- 售后状态
+- 取消原因
+- 预约发货时间
+- 仓库ID
+- 仓库名称
+- 是否安心购
+- 广告渠道
+- 流量类型
+- 流量体裁
+- 流量渠道
+- 发货主体
+- 发货主体明细
+- 发货时间
+- 降价类优惠
+- 平台实际承担优惠金额
+- 商家实际承担优惠金额
+- 达人实际承担优惠金额
+- 预计送达时间
+- 是否平台仓自流转
+- 车型
+- 商品69码
+- 发货SN码
+- 发货IMEI码1
+- 发货IMEI码2
+- 预约送达时间
+- 建议发货时间（起）
+- 建议发货时间（止）
+- 物流SN码
+- 物流IMEI码1
+- 物流IMEI码2
+
+有赞
+---------------------------
+- 订单号
+- 商品名称
+- 销售渠道
+- 订单类型
+- 订单来源
+- 交易成功时间
+- 订单实付金额
+- 分销推广补差
+- 分销推广佣金
+- 商品规格
+- 商品规格ID
+- 规格编码
+- 商品编码
+- 商品单价
+- 商品数量
+- 商品ID
+- 分销商商品推广补差
+- 商品推广佣金
+- 商品退款状态
+- 商品已退款金额
+- 订单状态
+- 订单创建时间
+- 买家昵称
+
+聚水潭线上 - 分销明细
+---------------------------
+- 内部订单号
+- 标记多标签
+- 售后单号
+- 订单类型
+- 线上订单号
+- 订单状态
+- 发货仓
+- 虚拟仓
+- 分销商
+- 店铺
+- 小旗
+- 买家账号
+- 卖家备注
+- 订单日期
+- 发货日期
+- 付款日期
+- 业务员
+- 收货人
+- 省
+- 市
+- 区县
+- 快递公司
+- 快递单号
+- 售后登记日期
+- 售后确认日期
+- 售后分类
+- 问题类型
+- 商品编码
+- 款式编码
+- 原始线上订单号
+- 产品分类
+- 品牌
+- 商品简称
+- 颜色规格
+- 供应商
+- 店铺商品编码
+- 基本售价
+- 成本价
+- 成本价来源
+- 销售数量
+- 实发数量
+- 实发金额
+- 销售金额
+- 销售成本
+- 实发成本
+- 销售毛利
+- 销售毛利率
+- 已付金额
+- 应付金额
+- 售价
+- 基本金额
+- 退货数量
+- 实退数量
+- 退货金额
+- 退货成本
+- 实退成本
+- 实退金额
+- 运费收入
+- 运费收入分摊
+- 整单运费支出
+- 运费支出
+- 优惠金额
+- 订单重量
+- 供销商
+- 币种
+- 国际单号
+- 剩余发货时间
+- 付款方式
+- 买家指定物流
+- 收货国家地区
+- 实发物流渠道
+- 境外运费支出分摊
+- 境外收入总计分摊
+- 境外支出总计分摊
+- 汇率
+- 货主分销
+- 平台补贴金额
+- 买家ID
+
+阿里巴巴
+---------------------------
+- 内部订单号
+- 标记多标签
+- 售后单号
+- 订单类型
+- 线上订单号
+- 订单状态
+- 发货仓
+- 虚拟仓
+- 分销商
+- 店铺
+- 小旗
+- 买家ID
+- 买家账号
+- 卖家备注
+- 订单日期
+- 发货日期
+- 付款日期
+- 业务员
+- 收货人
+- 省
+- 市
+- 区县
+- 快递公司
+- 快递单号
+- 售后登记日期
+- 售后确认日期
+- 售后分类
+- 问题类型
+- 商品编码
+- 款式编码
+- 原始线上订单号
+- 产品分类
+- 品牌
+- 商品简称
+- 颜色规格
+- 供应商
+- 店铺商品编码
+- 基本售价
+- 成本价
+- 成本价来源
+- 销售数量
+- 实发数量
+- 实发金额
+- 销售金额
+- 销售成本
+- 实发成本
+- 销售毛利
+- 销售毛利率
+- 已付金额
+- 应付金额
+- 售价
+- 基本金额
+- 退货数量
+- 实退数量
+- 退货金额
+- 退货成本
+- 实退成本
+- 实退金额
+- 运费收入
+- 运费收入分摊
+- 整单运费支出
+- 运费支出
+- 优惠金额
+- 订单重量
+- 供销商
+- 币种
+- 国际单号
+- 剩余发货时间
+- 付款方式
+- 买家指定物流
+- 收货国家地区
+- 实发物流渠道
+- 境外运费支出分摊
+- 境外收入总计分摊
+- 境外支出总计分摊
+- 汇率
+- 货主分销
+- 平台补贴金额</script>
+
+  <script>
+    const source = document.getElementById('fieldSource').textContent.trim();
+    const state = { sections: parseSource(source), query: '' };
+
+    const els = {
+      search: document.getElementById('searchInput'),
+      nav: document.getElementById('navList'),
+      list: document.getElementById('sectionList'),
+      empty: document.getElementById('emptyState'),
+      tableCount: document.getElementById('tableCount'),
+      fieldCount: document.getElementById('fieldCount'),
+      visibleCount: document.getElementById('visibleCount'),
+      largestTable: document.getElementById('largestTable'),
+      toast: document.getElementById('toast'),
+    };
+
+    init();
+
+    function parseSource(markdown) {
+      const lines = markdown.split(/\r?\n/);
+      const sections = [];
+      let current = null;
+
+      lines.forEach((line, index) => {
+        const value = line.trim();
+        const next = (lines[index + 1] || '').trim();
+        if (!value || value.startsWith('#')) return;
+
+        if (/^-{5,}$/.test(next)) {
+          current = { id: slug(value), name: value, fields: [] };
+          sections.push(current);
+          return;
+        }
+
+        if (value.startsWith('- ') && current) {
+          current.fields.push(value.slice(2).trim());
+        }
+      });
+
+      return sections;
+    }
+
+    function init() {
+      const totalFields = state.sections.reduce((sum, item) => sum + item.fields.length, 0);
+      const largest = [...state.sections].sort((a, b) => b.fields.length - a.fields.length)[0];
+      els.tableCount.textContent = state.sections.length;
+      els.fieldCount.textContent = totalFields;
+      els.largestTable.textContent = `最大字段表：${largest.name}（${largest.fields.length}）`;
+      els.search.addEventListener('input', event => {
+        state.query = String(event.target.value || '').trim().toLowerCase();
+        render();
+      });
+      render();
+    }
+
+    function render() {
+      const query = state.query;
+      const visible = state.sections
+        .map(section => {
+          const nameMatched = section.name.toLowerCase().includes(query);
+          const fields = query && !nameMatched
+            ? section.fields.filter(field => field.toLowerCase().includes(query))
+            : section.fields;
+          return { ...section, fields, nameMatched };
+        })
+        .filter(section => !query || section.nameMatched || section.fields.length > 0);
+
+      els.visibleCount.textContent = `${visible.length}/${state.sections.length}`;
+      els.empty.style.display = visible.length ? 'none' : 'block';
+      renderNav(visible);
+      renderCards(visible, query);
+    }
+
+    function renderNav(sections) {
+      els.nav.innerHTML = sections.map(section => `
+        <li>
+          <a href="#${section.id}">
+            <span class="name">${escapeHtml(section.name)}</span>
+            <span class="count">${section.fields.length}</span>
+          </a>
+        </li>
+      `).join('');
+    }
+
+    function renderCards(sections, query) {
+      els.list.innerHTML = sections.map(section => `
+        <article class="table-card" id="${section.id}">
+          <header>
+            <div>
+              <h3>${highlight(section.name, query)}</h3>
+              <div class="table-meta">
+                <span class="badge">${section.fields.length} 个字段</span>
+                <span>${query ? '当前搜索结果' : '完整字段清单'}</span>
+              </div>
+            </div>
+            <button class="copy-btn" type="button" data-copy="${section.id}">复制字段</button>
+          </header>
+          <div class="fields">
+            ${section.fields.map(field => `<div class="field">${highlight(field, query)}</div>`).join('')}
+          </div>
+        </article>
+      `).join('');
+
+      document.querySelectorAll('[data-copy]').forEach(button => {
+        button.addEventListener('click', () => {
+          const section = state.sections.find(item => item.id === button.dataset.copy);
+          copyText([section.name, ...section.fields.map(field => `- ${field}`)].join('\n'));
+        });
+      });
+    }
+
+    async function copyText(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        textarea.remove();
+      }
+      showToast();
+    }
+
+    function showToast() {
+      els.toast.classList.add('show');
+      window.clearTimeout(showToast.timer);
+      showToast.timer = window.setTimeout(() => els.toast.classList.remove('show'), 1400);
+    }
+
+    function highlight(text, query) {
+      const safe = escapeHtml(text);
+      if (!query) return safe;
+      const pattern = escapeRegExp(query);
+      return safe.replace(new RegExp(pattern, 'gi'), match => `<mark>${match}</mark>`);
+    }
+
+    function escapeHtml(text) {
+      return String(text).replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char]));
+    }
+
+    function escapeRegExp(text) {
+      return text.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
+    }
+
+    function slug(text) {
+      return 'section-' + Array.from(text).map(char => char.codePointAt(0).toString(36)).join('-').slice(0, 80);
+    }
+  </script>
+</body>
+</html>

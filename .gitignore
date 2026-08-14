@@ -1,0 +1,43 @@
+# Local source data: keep on this computer, never commit to Git.
+/data/
+
+# Local secrets.
+**/.env
+**/config/accounts.json
+
+# Dependencies and generated frontend output.
+**/node_modules/
+**/.next/
+**/.vinext/
+**/.wrangler/
+**/dist/
+**/out/
+**/coverage/
+**/work/
+
+# Python caches and virtual environments.
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/*.pyc
+
+# Codex and spreadsheet temporary files.
+**/.codex-tmp/
+**/.codex_tmp/
+/.codex_tmp_report_*/
+/.codex_spreadsheet_*/
+
+# Uploaded business data and generated analysis artifacts.
+**/increaseData/
+**/outputs/
+**/output/
+*.xlsx
+*.xls
+*.csv
+*.ndjson
+*.jsonl
+
+# Local logs and OS files.
+*.log
+.DS_Store
+Thumbs.db

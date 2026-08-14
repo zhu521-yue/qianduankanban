@@ -1,0 +1,11 @@
+{
+  "accounts": {
+    "your_username": {
+      "id": "usr_unique_id",
+      "password_hash": "请使用 app.security.hash_password 生成，不要保存明文密码",
+      "display_name": "账号显示名称",
+      "role": "talent",
+      "group_key": "talent"
+    }
+  }
+}
