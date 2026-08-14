@@ -6,6 +6,7 @@ import {
   ApiRequestError,
   api,
   type AiSetting,
+  type AiSettingInput,
   type CustomerDetailData,
   type CustomerListData,
   type CustomerListItem,
@@ -449,15 +450,26 @@ function UploadPage({ page }: { page: PageConfig }) {
 function SettingsPage({ page, user }: { page: PageConfig; user: User }) {
   const [ruleGroups, setRuleGroups] = useState<HealthRuleGroup[]>([]);
   const [setting, setSetting] = useState<AiSetting | null>(null);
+  const [aiForm, setAiForm] = useState({ base_url: "", api_key: "", model_name: "" });
+  const [testingAi, setTestingAi] = useState(false);
+  const [savingAi, setSavingAi] = useState(false);
+  const [testedAiFingerprint, setTestedAiFingerprint] = useState("");
+  const [aiMessage, setAiMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   useEffect(() => {
+    const receiveAiSetting = (value: AiSetting) => {
+      setSetting(value);
+      setAiForm({ base_url: value.base_url, api_key: "", model_name: value.model_name || "" });
+      setTestedAiFingerprint("");
+      setAiMessage("");
+    };
     if (user.role === "manager") {
-      api.aiSetting().then(setSetting).catch(reason => setError(errorText(reason)));
+      api.aiSetting().then(receiveAiSetting).catch(reason => setError(errorText(reason)));
       return;
     }
-    Promise.all([api.healthRules(), api.aiSetting()]).then(([health, aiSetting]) => { setRuleGroups(normalizeHealthRuleGroups(health.groups)); setSetting(aiSetting); }).catch(reason => setError(errorText(reason)));
+    Promise.all([api.healthRules(), api.aiSetting()]).then(([health, aiSetting]) => { setRuleGroups(normalizeHealthRuleGroups(health.groups)); receiveAiSetting(aiSetting); }).catch(reason => setError(errorText(reason)));
   }, [user.role]);
   const updateRule = (groupKey: string, status: string, field: "state_instructions" | "follow_up_action", value: string) => {
     setSaveMessage("");
@@ -491,8 +503,96 @@ function SettingsPage({ page, user }: { page: PageConfig; user: User }) {
       setSaving(false);
     }
   };
+  const aiPayload: AiSettingInput = {
+    base_url: aiForm.base_url.trim(),
+    api_key: aiForm.api_key.trim() || null,
+    model_name: aiForm.model_name.trim() || null,
+  };
+  const aiFingerprint = JSON.stringify(aiPayload);
+  const canTestAi = Boolean(aiPayload.base_url && aiPayload.model_name && (aiPayload.api_key || setting?.configured));
+  const canSaveAi = canTestAi && testedAiFingerprint === aiFingerprint && !testingAi && !savingAi;
+  const updateAiField = (field: "base_url" | "api_key" | "model_name", value: string) => {
+    setAiForm(current => ({ ...current, [field]: value }));
+    setTestedAiFingerprint("");
+    setAiMessage("");
+    setError("");
+  };
+  const testAi = async () => {
+    if (!canTestAi || testingAi || savingAi) return;
+    const fingerprint = aiFingerprint;
+    setTestingAi(true);
+    setError("");
+    setAiMessage("");
+    try {
+      const result = await api.testAiSetting(aiPayload);
+      setTestedAiFingerprint(fingerprint);
+      setAiMessage(`连接测试成功，${result.model_name} 回复：${result.reply_preview}`);
+    } catch (reason) {
+      setTestedAiFingerprint("");
+      setError(errorText(reason));
+    } finally {
+      setTestingAi(false);
+    }
+  };
+  const saveAi = async () => {
+    if (!canSaveAi) return;
+    setSavingAi(true);
+    setError("");
+    setAiMessage("");
+    try {
+      const saved = await api.updateAiSetting(aiPayload);
+      setSetting(saved);
+      setAiForm({ base_url: saved.base_url, api_key: "", model_name: saved.model_name || "" });
+      setTestedAiFingerprint("");
+      setAiMessage("当前账号的AI接口配置已保存，后续AI功能会自动使用该配置。");
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setSavingAi(false);
+    }
+  };
   return (
-    <main className="main-content settings-page"><header className="topbar"><div><Breadcrumbs items={page.breadcrumb} /><h1>{page.title}</h1><p>{page.subtitle}</p></div>{user.role !== "manager" && <div className="header-actions"><button className="primary-button" disabled={!canSave || saving} onClick={() => void saveRules()}>{saving ? "保存并同步中…" : "保存客户状态规则"}</button></div>}</header>{error && <div className="api-error-banner">{error}</div>}{saveMessage && <div className="settings-save-note">{saveMessage}</div>}{!setting && !error ? <LoadingPanel text={user.role === "manager" ? "正在读取后端设置…" : "正在读取规则配置表与后端设置…"} /> : <section className="settings-grid">{ruleGroups.map(group => <article className="panel settings-card rules-card" key={group.group_key}><SectionHeader eyebrow="CUSTOMER HEALTH RULES" title={`${group.group_name}客户状态规则`} action={<span className="readonly-pill">可编辑</span>} /><p>客户状态及顺序固定；可修改状态说明和建议跟进动作，保存后将同步更新本组组级、平台级及全部店铺级客户健康度表。</p><div className="health-rules-table"><div className="health-rules-head"><span>客户状态</span><span>状态说明</span><span>建议跟进动作</span></div>{group.items.map((rule, index) => <div className="health-rule-row" key={rule.customer_health_status}><div className="rule-status"><strong>{rule.customer_health_status}</strong><small>固定顺序 {index + 1}</small></div><textarea value={rule.state_instructions} onChange={event => updateRule(group.group_key, rule.customer_health_status, "state_instructions", event.target.value)} aria-label={`${group.group_name}${rule.customer_health_status}状态说明`} /><textarea value={rule.follow_up_action} onChange={event => updateRule(group.group_key, rule.customer_health_status, "follow_up_action", event.target.value)} aria-label={`${group.group_name}${rule.customer_health_status}建议跟进动作`} /></div>)}</div></article>)}<article className="panel settings-card ai-config-card"><SectionHeader eyebrow="AI API CONFIG" title="AI 接口设置" /><div className="api-fields"><label><span>api_key</span><input type="password" value={setting?.api_key_masked || ""} readOnly placeholder="后端尚未配置" /></label><label><span>base_url</span><input type="url" value={setting?.base_url || ""} readOnly placeholder="后端尚未配置" /></label><label><span>model_name</span><input value={setting?.model_name || ""} readOnly placeholder="后端尚未配置" /></label></div><div className="api-note"><strong>{setting?.configured ? "后端已配置" : "后端尚未配置"}</strong><span>密钥只保存在后端 .env，浏览器仅接收掩码，不读取明文。</span></div></article></section>}<footer className="page-footer">AI客户看板 · 设置数据来自后端接口</footer></main>
+    <main className="main-content settings-page">
+      <header className="topbar">
+        <div><Breadcrumbs items={page.breadcrumb} /><h1>{page.title}</h1><p>{page.subtitle}</p></div>
+        {user.role !== "manager" && <div className="header-actions"><button className="primary-button" disabled={!canSave || saving} onClick={() => void saveRules()}>{saving ? "保存并同步中…" : "保存客户状态规则"}</button></div>}
+      </header>
+      {error && <div className="api-error-banner">{error}</div>}
+      {saveMessage && <div className="settings-save-note">{saveMessage}</div>}
+      {!setting && !error ? <LoadingPanel text={user.role === "manager" ? "正在读取后端设置…" : "正在读取规则配置表与后端设置…"} /> :
+        <section className={`settings-grid ${ruleGroups.length ? "" : "ai-only"}`}>
+          {ruleGroups.map(group =>
+            <article className="panel settings-card rules-card" key={group.group_key}>
+              <SectionHeader eyebrow="CUSTOMER HEALTH RULES" title={`${group.group_name}客户状态规则`} action={<span className="readonly-pill">可编辑</span>} />
+              <p>客户状态及顺序固定；可修改状态说明和建议跟进动作，保存后将同步更新本组组级、平台级及全部店铺级客户健康度表。</p>
+              <div className="health-rules-table">
+                <div className="health-rules-head"><span>客户状态</span><span>状态说明</span><span>建议跟进动作</span></div>
+                {group.items.map((rule, index) =>
+                  <div className="health-rule-row" key={rule.customer_health_status}>
+                    <div className="rule-status"><strong>{rule.customer_health_status}</strong><small>固定顺序 {index + 1}</small></div>
+                    <textarea value={rule.state_instructions} onChange={event => updateRule(group.group_key, rule.customer_health_status, "state_instructions", event.target.value)} aria-label={`${group.group_name}${rule.customer_health_status}状态说明`} />
+                    <textarea value={rule.follow_up_action} onChange={event => updateRule(group.group_key, rule.customer_health_status, "follow_up_action", event.target.value)} aria-label={`${group.group_name}${rule.customer_health_status}建议跟进动作`} />
+                  </div>)}
+              </div>
+            </article>)}
+          <article className="panel settings-card ai-config-card">
+            <SectionHeader eyebrow="AI API CONFIG" title="AI 接口设置" action={<span className="readonly-pill">当前账号独立配置</span>} />
+            <p>填写当前账号使用的大模型接口。测试成功后才能保存，其他账号不会读取或覆盖这份配置。</p>
+            <div className="api-fields">
+              <label><span>base_url</span><input type="url" value={aiForm.base_url} onChange={event => updateAiField("base_url", event.target.value)} disabled={testingAi || savingAi} placeholder="https://api.example.com/v1" /></label>
+              <label><span>api_key</span><input type="password" value={aiForm.api_key} onChange={event => updateAiField("api_key", event.target.value)} disabled={testingAi || savingAi} autoComplete="off" placeholder={setting?.api_key_masked ? "已保存密钥；留空表示继续使用" : "请输入api_key"} /></label>
+              <label><span>model_name</span><input value={aiForm.model_name} onChange={event => updateAiField("model_name", event.target.value)} disabled={testingAi || savingAi} placeholder="请输入模型名称" /></label>
+            </div>
+            <div className="ai-config-actions">
+              <button className="ghost-button" disabled={!canTestAi || testingAi || savingAi} onClick={() => void testAi()}>{testingAi ? "测试连接中…" : "测试连接"}</button>
+              <button className="primary-button" disabled={!canSaveAi} onClick={() => void saveAi()}>{savingAi ? "校验并保存中…" : "保存配置"}</button>
+            </div>
+            {aiMessage && <div className="ai-config-message">{aiMessage}</div>}
+            <div className="api-note"><strong>{setting?.configured ? "当前账号已配置" : "当前账号尚未配置"}</strong><span>密钥不会保存在浏览器；保存后仅显示掩码，后续AI调用由后端自动使用。</span></div>
+          </article>
+        </section>}
+      <footer className="page-footer">AI客户看板 · 每个登录账号独立维护AI接口配置</footer>
+    </main>
   );
 }
 

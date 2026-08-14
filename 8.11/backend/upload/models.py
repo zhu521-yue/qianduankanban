@@ -28,6 +28,7 @@ class StoreUploadConfig:
     customer_mapping_columns: tuple[str, ...]
     downstream_tables: tuple[str, ...]
     aggregate_path: tuple[str, ...]
+    required_upload_columns: tuple[str, ...] = ()
     date_year_replacements: tuple[tuple[int, int], ...] = ()
     mixed_sales_rules: MixedSalesRules | None = None
     business_preview_builder: Callable[..., dict[str, Any]] | None = None

@@ -77,6 +77,15 @@ def analyse_upload(
             "TRANSACTION_TIME_MISSING",
             f"文件缺少交易时间字段：{config.transaction_time_column}",
         )
+    missing_required = [
+        column for column in config.required_upload_columns if column not in effective_headers
+    ]
+    if missing_required:
+        raise ApiError(
+            422,
+            "UPLOAD_REQUIRED_COLUMN_MISSING",
+            f"文件缺少业务必需字段：{', '.join(missing_required)}",
+        )
     if config.existing_date_policy == "upsert":
         missing_keys = [column for column in config.row_key_columns if column not in effective_headers]
         if not config.row_key_columns or missing_keys:

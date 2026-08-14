@@ -11,6 +11,15 @@ CONFIG = StoreUploadConfig(
     customer_mapping_columns=("customer_id",),
     downstream_tables=STORE_TABLES,
     aggregate_path=aggregate_path("private", "youzan"),
+    required_upload_columns=(
+        "订单状态",
+        "商品单价",
+        "商品数量",
+        "商品已退款金额",
+        "规格编码",
+        "销售渠道",
+        "买家昵称",
+    ),
     business_preview_builder=build_preview,
     commit_enabled=True,
 )

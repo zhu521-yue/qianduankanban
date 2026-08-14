@@ -71,8 +71,8 @@ def _prepare_fact(conn: Connection) -> None:
         WITH cleaned AS (
             SELECT
                 NULLIF(BTRIM(COALESCE(raw."付款日期"::text, ''), E' \t\n\r'), '') AS payment_text,
-                NULLIF(REGEXP_REPLACE(COALESCE(raw."实发金额"::text, ''), '[,￥¥[:space:]]', '', 'g'), '') AS shipped_amount_text,
-                NULLIF(REGEXP_REPLACE(COALESCE(raw."实退金额"::text, ''), '[,￥¥[:space:]]', '', 'g'), '') AS refund_amount_text,
+                NULLIF(REGEXP_REPLACE(COALESCE(raw."销售金额"::text, ''), '[,￥¥[:space:]]', '', 'g'), '') AS sales_amount_text,
+                NULLIF(REGEXP_REPLACE(COALESCE(raw."退货金额"::text, ''), '[,￥¥[:space:]]', '', 'g'), '') AS refund_amount_text,
                 NULLIF(REGEXP_REPLACE(COALESCE(raw."实发数量"::text, ''), '[,[:space:]]', '', 'g'), '') AS shipped_quantity_text,
                 NULLIF(REGEXP_REPLACE(COALESCE(raw."实退数量"::text, ''), '[,[:space:]]', '', 'g'), '') AS refund_quantity_text,
                 NULLIF(BTRIM(COALESCE(raw."商品编码"::text, ''), E' \t\n\r'), '') AS product_code_text,
@@ -90,8 +90,8 @@ def _prepare_fact(conn: Connection) -> None:
         ), typed AS (
             SELECT
                 REPLACE(LEFT(payment_text, 10), '/', '-')::date AS transaction_date,
-                CASE WHEN pg_input_is_valid(shipped_amount_text, 'numeric')
-                    THEN shipped_amount_text::numeric ELSE 0 END AS shipped_amount,
+                CASE WHEN pg_input_is_valid(sales_amount_text, 'numeric')
+                    THEN sales_amount_text::numeric ELSE 0 END AS sales_amount,
                 CASE WHEN pg_input_is_valid(refund_amount_text, 'numeric')
                     THEN refund_amount_text::numeric ELSE 0 END AS refund_amount,
                 CASE WHEN pg_input_is_valid(shipped_quantity_text, 'numeric')
@@ -104,7 +104,7 @@ def _prepare_fact(conn: Connection) -> None:
             FROM cleaned
         )
         SELECT transaction_date,
-               ROUND(shipped_amount, 2)::numeric(18,2) AS transaction_amount,
+               ROUND(sales_amount, 2)::numeric(18,2) AS transaction_amount,
                ROUND(refund_amount, 2)::numeric(18,2) AS refund_amount,
                (shipped_quantity - refund_quantity)::numeric(18,4) AS product_quantity,
                CASE WHEN product_code_text IS NOT NULL AND product_code_text <> '-'
@@ -112,7 +112,7 @@ def _prepare_fact(conn: Connection) -> None:
                CASE WHEN customer_id_text NOT IN ('', '-', '0', '0.0')
                     THEN customer_id_text END AS customer_id,
                order_status = '已发货' AS is_sale,
-               refund_amount > 0 AS is_refund
+               refund_quantity <> 0 OR refund_amount <> 0 AS is_refund
         FROM typed
     ''')
     conn.execute("CREATE INDEX ON upload_alibaba_fact (transaction_date)")

@@ -47,22 +47,22 @@ def classify_rows(
         if _text(values.get("订单状态")) != "已发货":
             continue
         counts["shipped_rows"] += 1
-        shipped = _money(values.get("实发金额"))
-        refunded = _money(values.get("实退金额")) or ZERO
+        sales_amount = _money(values.get("销售金额"))
+        refunded = _money(values.get("退货金额")) or ZERO
         shipped_qty = _money(values.get("实发数量"))
         refunded_qty = _money(values.get("实退数量")) or ZERO
-        if shipped is None:
+        if sales_amount is None:
             counts["invalid_amount_rows"] += 1
-            shipped = ZERO
+            sales_amount = ZERO
         if shipped_qty is None:
             counts["invalid_quantity_rows"] += 1
             shipped_qty = ZERO
-        sales_by_date[item.business_date] += shipped
-        gross_amount += shipped
+        sales_by_date[item.business_date] += sales_amount
+        gross_amount += sales_amount
         refund_amount += refunded
         gross_quantity += shipped_qty
         refund_quantity += refunded_qty
-        if refunded > ZERO or refunded_qty > ZERO:
+        if refunded != ZERO or refunded_qty != ZERO:
             counts["refund_rows"] += 1
             refunds_by_date[item.business_date] += refunded
         if _text(values.get("买家ID")) not in {"", "-", "0", "0.0"}:
@@ -72,7 +72,7 @@ def classify_rows(
 
     summary = {
         **counts,
-        "gross_shipped_amount": _number(gross_amount),
+        "gross_sales_amount": _number(gross_amount),
         "refund_amount": _number(refund_amount),
         "gross_shipped_quantity": format(gross_quantity, "f"),
         "refund_quantity": format(refund_quantity, "f"),
@@ -195,14 +195,14 @@ def build_preview(
             "valid_sales_rows": source_summary["shipped_rows"],
             "sales_with_refund_rows": source_summary["refund_rows"],
             "refund_only_rows": 0,
-            "gross_sales_amount": source_summary["gross_shipped_amount"],
+            "gross_sales_amount": source_summary["gross_sales_amount"],
         },
         "policies": {
             "business_date": "付款日期",
             "sales_file": "skip_each_business_date_that_already_exists_and_insert_new_dates_only",
-            "sales_amount": "实发金额（毛销售额，退款金额单独统计）",
+            "sales_amount": "销售金额（逐行直接作为毛销售额，不乘销售数量；退款金额单独统计）",
             "product_quantity": "实发数量减实退数量",
-            "refund_amount": "实退金额",
+            "refund_amount": "退货金额（逐行直接作为退款金额）",
             "customer_filter": "订单状态为已发货且买家ID有效",
             "future_refund_file": "update_existing_raw_records_only",
             "historical_recalculation": "none; new business dates are added to current period values",

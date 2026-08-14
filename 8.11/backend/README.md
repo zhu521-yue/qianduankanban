@@ -45,19 +45,23 @@ cd D:\实习\AI客户看板\8.11\backend
 python -m pip install -r requirements.txt
 ```
 
-复制并修改环境配置：
+在项目根目录复制并修改全项目唯一的环境配置：
 
 ```powershell
-Copy-Item .env.example .env
+Copy-Item ..\..\.env.example ..\..\.env
 ```
 
-至少需要：
+后端、前端以及 `数据表建设/scripts` 下的数据库脚本都会读取这一个根目录 `.env`。至少需要：
 
 ```dotenv
 DATABASE_URL=postgresql://<user>:<password>@127.0.0.1:5432/weidian
 APP_ENCRYPTION_KEY=<Fernet key>
 ACCOUNTS_FILE=config/accounts.json
 ```
+
+本地开发时 `NEXT_PUBLIC_API_BASE_URL` 留空，前端会用 `NEXT_PUBLIC_API_PORT` 和浏览器当前主机名连接后端，确保登录 Cookie 不会因 `localhost` / `127.0.0.1` 混用而丢失。分离部署时再显式填写完整的 `NEXT_PUBLIC_API_BASE_URL`。
+
+AI接口由四个固定登录角色在各自设置页维护。配置测试成功后，后端只更新根目录 `.env` 中当前角色对应的 `AI_MANAGER_*`、`AI_TALENT_*`、`AI_PRIVATE_*` 或 `AI_DISTRIBUTION_*`，并立即热加载；前端不保存密钥，后续AI对话也不会携带密钥。
 
 生成签名密钥：
 
@@ -93,11 +97,13 @@ python -m pytest -q
 | `GET` | `/api/v1/customers` | 客户搜索、状态筛选、排序、分页 |
 | `GET` | `/api/v1/customers/{store_key}/{customer_id}` | 客户详情和五种时间维度 |
 | `GET` | `/api/v1/uploads/template` | 下载标准校验模板 |
-| `POST` | `/api/v1/uploads/sales` | 销售文件预览；Kocotree支持预览后原子写入 |
+| `POST` | `/api/v1/uploads/sales` | 九店销售文件预览及确认后的原子写入 |
 | `GET` | `/api/v1/settings/health-rules` | 组账号读取本组固定 7 条规则；主管返回空组 |
 | `PUT` | `/api/v1/settings/health-rules` | 组账号保存本组规则并事务同步组级、平台级、店铺级健康度表；主管禁止 |
-| `GET` | `/api/v1/settings/ai` | 读取服务端 AI 配置状态 |
-| `POST` | `/api/v1/ai/chat` | 基于真实客户数据生成摘要或调用 AI |
+| `GET` | `/api/v1/settings/ai` | 读取当前登录角色的AI配置状态和密钥掩码 |
+| `POST` | `/api/v1/settings/ai/test` | 使用当前输入或已保存密钥测试当前角色的AI接口 |
+| `PUT` | `/api/v1/settings/ai` | 复测成功后原子保存当前角色配置并热加载 |
+| `POST` | `/api/v1/ai/chat` | 按当前登录角色的独立配置生成客户经营回复 |
 
 所有业务响应使用统一结构：
 
@@ -141,9 +147,9 @@ D:\Anaconda\envs\AIFrontOutloook\python.exe scripts\set_account_password.py <账
 
 ## 上传边界
 
-现有数据库每个平台的 `raw_data` 字段和订单口径不同。接口支持对应店铺原始 CSV/XLSX 文件预览。抖店两店、微店和快手小店已启用`mode=commit`。快手按“订单创建时间”整日覆盖，一次事务联动原始表、客户名单、33张店铺派生表以及20张达人组/渠道汇总表；未接入店铺继续保持仅预览。
+现有数据库每个平台的 `raw_data` 字段和订单口径不同。接口支持九个店铺对应的原始 CSV/XLSX 文件预览和`mode=commit`原子写入。上传前会校验店铺交易时间字段、业务必需字段以及`raw_data`列兼容性。抖店两店和快手按交易日期整日覆盖；微店、有赞两店、阿里巴巴和聚水潭跳过数据库已有日期；快团团按`子订单号 + 商品编码`增量更新。所有正式写入均在单一事务中联动原始表、客户名单、店铺派生表和上级汇总表，任一步失败整体回滚。
 
-这样可以避免在尚未逐平台确认以下规则时误写现有数据：
+各店铺配置明确维护以下规则，修改平台导出格式或业务口径时必须同步复核：
 
 - 原始列名映射；
 - 订单唯一键与重复订单处理；

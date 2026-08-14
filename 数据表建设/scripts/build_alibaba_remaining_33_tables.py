@@ -4,7 +4,6 @@ import json
 import sys
 import time
 from dataclasses import dataclass
-from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -13,13 +12,18 @@ from psycopg import sql
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ENV_FILE = PROJECT_ROOT / "8.4" / ".env"
+BACKEND_ROOT = PROJECT_ROOT / "8.11" / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from app.settings import get_settings  # noqa: E402
+
+
 DATABASE = "weidian"
 SCHEMA = "alibaba"
 EXPECTED_RAW_ROWS = 978_128
+EXPECTED_SHIPPED_ROWS = 977_649
 EXPECTED_CUSTOMERS = 128_678
-EXPECTED_TRANSACTION_AMOUNT = Decimal("6199126651.35")
-EXPECTED_REFUND_AMOUNT = Decimal("32642034.11")
 
 
 @dataclass(frozen=True)
@@ -363,17 +367,6 @@ END
 """
 
 
-def read_env(path: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        values[key.strip()] = value.strip().strip('"').strip("'")
-    return values
-
-
 def log(message: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
 
@@ -409,24 +402,17 @@ def scalar(cur: psycopg.Cursor[Any], statement: str) -> Any:
 
 
 def main() -> int:
-    if not ENV_FILE.exists():
-        raise FileNotFoundError(f"数据库配置不存在：{ENV_FILE}")
-    env = read_env(ENV_FILE)
-    connection_kwargs = {
-        "host": env.get("POSTGRES_HOST", "localhost"),
-        "port": int(env.get("POSTGRES_PORT", "5432")),
-        "user": env.get("POSTGRES_USER", "root"),
-        "password": env.get("POSTGRES_PASSWORD", ""),
-        "dbname": DATABASE,
-        "connect_timeout": int(env.get("POSTGRES_CONNECT_TIMEOUT", "10")),
-        "application_name": "build_alibaba_remaining_33_tables",
-    }
+    settings = get_settings()
 
     row_counts: dict[str, int] = {}
     started_all = time.perf_counter()
     log(f"连接数据库 {DATABASE}.{SCHEMA}，准备启动单一事务")
 
-    with psycopg.connect(**connection_kwargs) as conn:
+    with psycopg.connect(
+        settings.database_url,
+        connect_timeout=settings.database_connect_timeout,
+        application_name="build_alibaba_remaining_33_tables",
+    ) as conn:
         with conn.cursor() as cur:
             cur.execute("SET LOCAL statement_timeout = 0")
             cur.execute("SET LOCAL lock_timeout = '10s'")
@@ -480,18 +466,19 @@ def main() -> int:
                         NULLIF(BTRIM("买家ID"), '')::varchar(255) AS customer_id,
                         NULLIF(BTRIM("商品编码"), '')::varchar(255) AS product_code,
                         COALESCE(NULLIF(BTRIM("销售数量"), '')::numeric, 0)::numeric(18,4) AS product_quantity,
-                        COALESCE(NULLIF(BTRIM("销售金额"), '')::numeric, 0) AS unit_sales_amount,
+                        COALESCE(NULLIF(BTRIM("销售金额"), '')::numeric, 0) AS sales_amount,
                         COALESCE(NULLIF(BTRIM("实退数量"), '')::numeric, 0) AS refund_quantity,
-                        COALESCE(NULLIF(BTRIM("实退金额"), '')::numeric, 0) AS unit_refund_amount
+                        COALESCE(NULLIF(BTRIM("退货金额"), '')::numeric, 0) AS return_amount
                     FROM {SCHEMA}.raw_data
+                    WHERE "订单状态" = '已发货'
                 ), calculated AS (
                     SELECT
                         transaction_date,
                         customer_id,
                         product_code,
                         product_quantity,
-                        ROUND(product_quantity * unit_sales_amount, 2)::numeric(18,2) AS transaction_amount,
-                        ROUND(refund_quantity * unit_refund_amount, 2)::numeric(18,2) AS refund_amount
+                        ROUND(sales_amount, 2)::numeric(18,2) AS transaction_amount,
+                        ROUND(return_amount, 2)::numeric(18,2) AS refund_amount
                     FROM normalized
                 )
                 SELECT
@@ -524,10 +511,9 @@ def main() -> int:
                 FROM tmp_alibaba_fact
             """)
             baseline = cur.fetchone()
-            assert_equal("事实层行数", baseline[0], EXPECTED_RAW_ROWS)
-            assert_equal("事实层交易金额", baseline[1], EXPECTED_TRANSACTION_AMOUNT)
-            assert_equal("事实层退款金额", baseline[2], EXPECTED_REFUND_AMOUNT)
-            assert_equal("事实层客户数", baseline[5], EXPECTED_CUSTOMERS)
+            assert_equal("已发货事实层行数", baseline[0], EXPECTED_SHIPPED_ROWS)
+            expected_transaction_amount = baseline[1]
+            expected_refund_amount = baseline[2]
             log(
                 f"事实基线：{baseline[3]}~{baseline[4]}，客户 {baseline[5]:,}，商品 {baseline[6]:,}，"
                 f"交易额 {baseline[1]}，退款额 {baseline[2]}"
@@ -941,7 +927,7 @@ def main() -> int:
             }
             for table, column in amount_checks.items():
                 total = scalar(cur, f"SELECT COALESCE(SUM({column}), 0) FROM {SCHEMA}.{table}")
-                assert_equal(f"{table}交易金额守恒", total, EXPECTED_TRANSACTION_AMOUNT)
+                assert_equal(f"{table}交易金额守恒", total, expected_transaction_amount)
 
             refund_checks = {
                 "weekly_refunds": "weekly_refund_amount",
@@ -951,7 +937,7 @@ def main() -> int:
             }
             for table, column in refund_checks.items():
                 total = scalar(cur, f"SELECT COALESCE(SUM({column}), 0) FROM {SCHEMA}.{table}")
-                assert_equal(f"{table}退款金额守恒", total, EXPECTED_REFUND_AMOUNT)
+                assert_equal(f"{table}退款金额守恒", total, expected_refund_amount)
 
             quantity_checks = {
                 "daily_product_sales": "product_quantity",

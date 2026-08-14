@@ -57,28 +57,24 @@ def classify_rows(
         if _text(values.get("订单状态")) != "已发货":
             continue
         sales_qty = _decimal(values.get("销售数量"))
-        sales_unit = _decimal(values.get("销售金额"))
+        sales_amount = _decimal(values.get("销售金额"))
         refund_qty = _decimal(values.get("实退数量")) or ZERO
-        refund_unit = _decimal(values.get("实退金额")) or ZERO
-        if sales_unit is None:
+        return_amount = _decimal(values.get("退货金额")) or ZERO
+        if sales_amount is None:
             counts["invalid_amount_rows"] += 1
-            sales_unit = ZERO
+            sales_amount = ZERO
         if sales_qty is None:
             counts["invalid_quantity_rows"] += 1
             sales_qty = ZERO
-        transaction_amount = (sales_qty * sales_unit).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        current_refund = (refund_qty * refund_unit).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
+        transaction_amount = sales_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        current_refund = return_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         counts["valid_sales_rows"] += 1
         sales_by_date[item.business_date] += transaction_amount
         gross_amount += transaction_amount
         refund_amount += current_refund
         gross_quantity += sales_qty
         refund_quantity += refund_qty
-        if refund_unit != ZERO or refund_qty != ZERO:
+        if return_amount != ZERO or refund_qty != ZERO:
             counts["refund_rows"] += 1
             refunds_by_date[item.business_date] += current_refund
         if jushuitan_customer(values) is not None:
@@ -213,9 +209,9 @@ def build_preview(
         "policies": {
             "business_date": "付款日期",
             "sales_file": "skip_each_business_date_that_already_exists_and_insert_new_dates_only",
-            "sales_amount": "销售数量乘销售金额（逐行四舍五入到2位，毛销售额）",
+            "sales_amount": "销售金额（逐行直接作为毛销售额，不乘销售数量）",
             "product_quantity": "销售数量",
-            "refund_amount": "实退数量乘实退金额（逐行四舍五入到2位）",
+            "refund_amount": "退货金额（逐行直接作为退款金额）",
             "customer_filter": "分销商优先；分销商为空时按童鞋、晨秋、老爸评测、戎井关键词和原店铺顺序转换",
             "future_refund_file": "update_existing_raw_records_only",
             "historical_recalculation": "none; new business dates are added to current period values",

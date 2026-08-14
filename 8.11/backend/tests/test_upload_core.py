@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.responses import ApiError
 from upload.business_preview import _classify_file_rows, aggregate_refresh_tables
 from upload.weidian.preview import classify_rows as classify_weidian_rows
 from upload.alibaba.preview import build_preview as build_alibaba_preview
@@ -97,6 +98,59 @@ def test_file_dedup_ignores_identical_rows_and_uses_last_changed_row():
     assert result == [prepared[-1]]
     assert analysis.duplicate_identical_rows == 1
     assert analysis.same_key_updated_rows == 1
+
+
+def test_upload_rejects_missing_required_business_columns(monkeypatch):
+    class FakeRepository:
+        def __init__(self, conn, config):
+            self.config = config
+
+        def raw_column_types(self):
+            return {
+                "交易日期": "text",
+                "订单状态": "text",
+                "金额": "numeric",
+            }
+
+    parsed = ParsedFile(
+        headers=("交易日期", "订单状态"),
+        rows=({"交易日期": "2026-08-13", "订单状态": "已完成"},),
+    )
+    config = StoreUploadConfig(
+        store_key="test",
+        schema_name="test",
+        transaction_time_column="交易日期",
+        customer_resolver=lambda row: None,
+        customer_mapping_columns=(),
+        downstream_tables=(),
+        aggregate_path=(),
+        required_upload_columns=("订单状态", "金额"),
+    )
+    monkeypatch.setattr("upload.pipeline.read_file", lambda *args: parsed)
+    monkeypatch.setattr("upload.pipeline.UploadRepository", FakeRepository)
+
+    with pytest.raises(ApiError) as captured:
+        analyse_upload(None, config, "sales.csv", b"unused")
+
+    assert captured.value.code == "UPLOAD_REQUIRED_COLUMN_MISSING"
+    assert "金额" in captured.value.message
+
+
+def test_every_store_declares_required_upload_columns():
+    from upload.registry import CONFIGS
+
+    assert set(CONFIGS) == {
+        "weidian",
+        "doudian_children",
+        "doudian_kocotree",
+        "kuaishou",
+        "youzan_qijian",
+        "youzan_muying",
+        "kuaituantuan",
+        "alibaba",
+        "jushuitan",
+    }
+    assert all(config.required_upload_columns for config in CONFIGS.values())
 
 
 def test_sales_upload_replaces_existing_dates_without_order_key_dedup(monkeypatch):
@@ -561,7 +615,27 @@ def test_kuaishou_refund_rules_keep_sales_and_refunds_separate():
     assert summary["refund_only_rows"] == 1
 
 
-def test_alibaba_uses_payment_date_and_gross_shipped_amount():
+def test_kuaishou_accepts_legitimate_65_yuan_sales_amount():
+    from upload.kuaishou.refunds import classify_rows
+
+    rows = [
+        PreparedRow(
+            2,
+            {"订单状态": "交易成功", "实付款": "65", "售后状态": "", "订单备注": ""},
+            date(2026, 8, 13),
+            "source_row=2",
+            "a",
+        )
+    ]
+
+    sales, refunds, summary = classify_rows(rows)
+
+    assert sales[date(2026, 8, 13)] == Decimal("65.00")
+    assert refunds == {}
+    assert summary["invalid_sales_amount_rows"] == 0
+
+
+def test_alibaba_uses_payment_date_and_sales_amount_directly():
     from upload.alibaba.config import CONFIG
 
     assert CONFIG.transaction_time_column == "付款日期"
@@ -574,10 +648,12 @@ def test_alibaba_uses_payment_date_and_gross_shipped_amount():
             2,
             {
                 "订单状态": "已发货",
-                "实发金额": "100.00",
-                "实退金额": "20.50",
+                "销售金额": "100.00",
+                "实发金额": "999.00",
+                "退货金额": "20.50",
+                "实退金额": "999.00",
                 "实发数量": "3",
-                "实退数量": "1",
+                "实退数量": "2",
                 "买家ID": "1001",
                 "商品编码": "SKU-1",
             },
@@ -589,8 +665,9 @@ def test_alibaba_uses_payment_date_and_gross_shipped_amount():
             3,
             {
                 "订单状态": "已取消",
-                "实发金额": "999.00",
-                "实退金额": "0",
+                "销售金额": "999.00",
+                "实发金额": "1.00",
+                "退货金额": "0",
                 "实发数量": "9",
                 "实退数量": "0",
                 "买家ID": "1002",
@@ -606,7 +683,7 @@ def test_alibaba_uses_payment_date_and_gross_shipped_amount():
 
     assert sales[date(2026, 7, 28)] == Decimal("100.00")
     assert refunds[date(2026, 7, 28)] == Decimal("20.50")
-    assert summary["net_product_quantity"] == "2.00"
+    assert summary["net_product_quantity"] == "1.00"
     assert summary["shipped_rows"] == 1
 
 
@@ -632,7 +709,7 @@ def test_alibaba_preview_adds_new_date_to_current_period_values(monkeypatch):
     rows = [PreparedRow(
         2,
         {
-            "订单状态": "已发货", "实发金额": "100", "实退金额": "20",
+            "订单状态": "已发货", "销售金额": "100", "退货金额": "20",
             "实发数量": "2", "实退数量": "1", "买家ID": "C1", "商品编码": "P1",
         },
         date(2026, 7, 28),

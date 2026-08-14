@@ -23,6 +23,18 @@ CONFIG = StoreUploadConfig(
     customer_mapping_columns=("customer_id", "affiliate_id", "affiliate_nickname"),
     downstream_tables=STORE_TABLES + ("monthly_product_presales", "quarterly_product_presales", "half_year_product_presales"),
     aggregate_path=aggregate_path("talent", "weidian"),
+    required_upload_columns=(
+        "订单实际收款金额",
+        "商品已退款金额",
+        "订单状态",
+        "商品发货",
+        "商品数量",
+        "SKU编码(自定义)",
+        "带货ID",
+        "带货账号昵称",
+        "是否预售",
+        "订单下单时间",
+    ),
     business_preview_builder=build_preview,
     commit_enabled=True,
 )

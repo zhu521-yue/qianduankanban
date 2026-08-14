@@ -50,6 +50,8 @@ def _sync_scoped(
 def refresh_fenxiao(
     conn: Connection,
     affected_customer_ids: tuple[str, ...] = (),
+    *,
+    include_health: bool = True,
 ) -> list[TableChange]:
     changes = [_sync_scoped(
         conn, "fenxiao",
@@ -144,26 +146,27 @@ def refresh_fenxiao(
                     AND weeks.period_end = health.period_end
               )
     '''
-    changes.append(sync_table(
-        conn,
-        schema_name="fenxiao",
-        table_name="customer_health_detail",
-        key_columns=("health_grain", "source_platform", "customer_id", "period_start", "period_end"),
-        value_columns=fenxiao_health_values,
-        expected_select=fenxiao_health_expected,
-        delete_scope_sql='''
-            target.health_grain = 'natural_week'
-            AND target.source_platform = 'jushuitan'
-            AND target.customer_id IN (
-                SELECT customer_id FROM upload_jushuitan_health_customers
-            )
-            AND EXISTS (
-                SELECT 1 FROM upload_jushuitan_health_weeks weeks
-                WHERE weeks.period_start = target.period_start
-                  AND weeks.period_end = target.period_end
-            )
-        ''',
-    ))
+    if include_health:
+        changes.append(sync_table(
+            conn,
+            schema_name="fenxiao",
+            table_name="customer_health_detail",
+            key_columns=("health_grain", "source_platform", "customer_id", "period_start", "period_end"),
+            value_columns=fenxiao_health_values,
+            expected_select=fenxiao_health_expected,
+            delete_scope_sql='''
+                target.health_grain = 'natural_week'
+                AND target.source_platform = 'jushuitan'
+                AND target.customer_id IN (
+                    SELECT customer_id FROM upload_jushuitan_health_customers
+                )
+                AND EXISTS (
+                    SELECT 1 FROM upload_jushuitan_health_weeks weeks
+                    WHERE weeks.period_start = target.period_start
+                      AND weeks.period_end = target.period_end
+                )
+            ''',
+        ))
     changes.append(_sync_scoped(
         conn, "fenxiao",
         "half_year_high_frequency_products",
@@ -231,7 +234,16 @@ def refresh_qudao_scoped(conn: Connection) -> list[TableChange]:
 def refresh_aggregates(
     conn: Connection,
     affected_customer_ids: tuple[str, ...] = (),
+    *,
+    include_health: bool = True,
 ) -> list[TableChange]:
     conn.execute("SELECT pg_advisory_xact_lock(hashtext('upload:fenxiao'))")
     conn.execute("SELECT pg_advisory_xact_lock(hashtext('upload:qudao'))")
-    return [*refresh_fenxiao(conn, affected_customer_ids), *refresh_qudao_scoped(conn)]
+    return [
+        *refresh_fenxiao(
+            conn,
+            affected_customer_ids,
+            include_health=include_health,
+        ),
+        *refresh_qudao_scoped(conn),
+    ]
