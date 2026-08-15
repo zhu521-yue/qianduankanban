@@ -25,12 +25,13 @@ test("server-renders the backend-authenticated login shell", async () => {
 });
 
 test("uses the backend API for authentication and every business data module", async () => {
-  const [page, client, dimension] = await Promise.all([
+  const [page, client, dimension, customerAssistant] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/CustomerDimensionPanel.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CustomerAiAssistant.tsx", import.meta.url), "utf8"),
   ]);
-  for (const endpoint of ["/auth/login", "/auth/session", "/auth/logout", "/meta/options", "/dashboard?", "/customers?", "/settings/health-rules", "/settings/ai", "/settings/ai/test", "/ai/chat", "/uploads/sales"]) {
+  for (const endpoint of ["/auth/login", "/auth/session", "/auth/logout", "/meta/options", "/dashboard?", "/customers?", "/settings/health-rules", "/settings/ai", "/settings/ai/test", "/ai/dashboard-insight", "/ai/customer-analysis", "/ai/query", "/ai/chat", "/uploads/sales"]) {
     assert.match(client, new RegExp(endpoint.replaceAll("/", "\\/")));
   }
   assert.match(client, /credentials: "include"/);
@@ -40,10 +41,70 @@ test("uses the backend API for authentication and every business data module", a
   assert.match(page, /api\.dashboard/);
   assert.match(page, /api\.customers/);
   assert.match(page, /api\.customer/);
-  assert.match(page, /api\.chat/);
+  assert.match(customerAssistant, /api\.chat/);
+  assert.match(customerAssistant, /api\.customerAnalysis/);
   assert.match(page, /api\.uploadPreview/);
   assert.match(page, /api\.healthRules/);
   assert.match(dimension, /customer\.dimensions\[grain\]/);
+});
+
+test("adds an independent source-backed AI business insight panel with rule fallback", async () => {
+  const [page, client, insight] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/AiInsightPanel.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(page, /<AiInsightPanel/);
+  assert.match(page, /onOpenSettings=\{openSettings\}/);
+  assert.match(client, /dashboardInsight/);
+  assert.match(client, /method: "POST"/);
+  assert.match(client, /signal/);
+  for (const label of ["AI 经营洞察", "规则摘要", "AI 分析", "已降级", "数据库证据", "建议动作", "前往 AI 设置", "不自动执行"]) {
+    assert.match(insight, new RegExp(label));
+  }
+  assert.match(insight, /controller\.abort\(\)/);
+  assert.match(insight, /api\.dashboardInsight/);
+});
+
+test("adds an internal customer operating assistant with source evidence and rule fallback", async () => {
+  const [page, client, assistant] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/CustomerAiAssistant.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(page, /<CustomerAiAssistant/);
+  assert.match(page, /onOpenSettings=\{openSettings\}/);
+  assert.match(client, /customerAnalysis/);
+  assert.match(client, /analysis_type: CustomerAnalysisType/);
+  for (const label of ["客户经营助手", "仅供业务内部分析", "综合诊断", "最近表现", "健康依据", "主要商品", "店铺退款", "内部跟进", "数据库证据", "内部跟进建议", "内部数据问答", "规则诊断", "AI 诊断", "已降级", "前往 AI 设置", "不自动执行"]) {
+    assert.match(assistant, new RegExp(label));
+  }
+  assert.match(assistant, /controller\.abort\(\)/);
+  assert.match(assistant, /api\.customerAnalysis/);
+  assert.match(assistant, /店铺退款数据不归因到单个客户/);
+  assert.doesNotMatch(assistant, /回复客户|沟通话术|营销文案|复制|发送给客户/);
+});
+
+test("adds a global controlled AI dashboard query drawer", async () => {
+  const [page, client, drawer] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/AskDashboardDrawer.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(page, /<AskDashboardDrawer/);
+  assert.match(page, /onContextChange=\{reportDashboardContext\}/);
+  assert.match(page, /type AiQueryContext/);
+  assert.match(client, /aiQuery/);
+  assert.match(client, /"\/ai\/query"/);
+  assert.match(client, /type AiQueryResult/);
+  for (const label of ["AI 问看板", "自然语言理解", "白名单指标", "数据库证据", "AI 问数", "规则问数", "已降级", "关键证据", "查询明细", "在看板中查看", "所有数字来自只读数据库工具", "不执行数据库写操作"]) {
+    assert.match(drawer, new RegExp(label));
+  }
+  assert.match(drawer, /new AbortController\(\)/);
+  assert.match(drawer, /api\.aiQuery/);
+  assert.match(drawer, /result\.chart/);
+  assert.match(drawer, /result\.table\.rows/);
+  assert.doesNotMatch(drawer, /dangerouslySetInnerHTML|contentEditable/);
 });
 
 test("keeps all role route hierarchies while sourcing values from the API", async () => {
@@ -57,7 +118,18 @@ test("keeps all role route hierarchies while sourcing values from the API", asyn
   assert.match(page, /有赞旗舰店/);
   assert.match(page, /title: "母婴旗舰店"/);
   assert.doesNotMatch(page, /有赞母婴旗舰店/);
-  for (const moduleName of ["销售走势", "自然周客户健康度", "半年高频商品", "退款金额分析", "输入客户ID筛选", "客户分析助手"]) assert.match(page, new RegExp(moduleName));
+  for (const moduleName of ["销售走势", "自然周客户健康度", "半年高频商品", "退款金额分析", "输入客户ID筛选", "CustomerAiAssistant"]) assert.match(page, new RegExp(moduleName));
+});
+
+test("uses expandable business groups and nested platforms without navigating from parent buttons", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  for (const label of ["业务分组", "分销组", "私域组", "达人组", "有赞", "抖店"]) assert.match(page, new RegExp(label));
+  assert.match(page, /const GROUP_NAV_CONFIG/);
+  assert.match(page, /onClick=\{\(\) => toggleGroup\(groupKey\)\}/);
+  assert.match(page, /onClick=\{\(\) => togglePlatform\(item\.scopeKey\)\}/);
+  assert.match(page, /aria-expanded=\{groupExpanded\}/);
+  assert.match(page, /aria-expanded=\{platformExpanded\}/);
+  assert.match(page, /overallPage && pageButton/);
 });
 
 test("contains no frontend account passwords or legacy static business snapshots", async () => {

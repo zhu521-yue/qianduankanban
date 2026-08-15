@@ -10,13 +10,25 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from psycopg import Error as PsycopgError
 
 from app.ai_provider import request_ai_completion
+from app.ai_query import execute_ai_query
 from app.auth import authenticate, issue_session, read_session
 from app.catalog import STORES, allowed_stores, scope_options
 from app.database import close_pool, connection, open_pool
 from app.periods import Grain, parse_date
 from app.responses import ApiError, error_payload, ok
-from app.schemas import ApiSettingsUpdate, ChatRequest, HealthRulesUpdate, LoginRequest, UserContext
-from app.services import CustomerService, DashboardService, SettingsService
+from app.schemas import AiQueryRequest, ApiSettingsUpdate, ChatRequest, CustomerAnalysisRequest, DashboardInsightRequest, HealthRulesUpdate, LoginRequest, UserContext
+from app.services import (
+    CustomerService,
+    DashboardService,
+    SettingsService,
+    build_dashboard_insight,
+    build_customer_analysis,
+    customer_analysis_messages,
+    dashboard_insight_messages,
+    infer_customer_analysis_type,
+    is_customer_communication_request,
+    normalize_ai_summary,
+)
 from app.settings import get_settings
 from app.uploads import UploadService, template_csv
 
@@ -303,28 +315,166 @@ async def test_ai_setting(body: ApiSettingsUpdate, request: Request, user: UserC
     )
 
 
+@app.post("/api/v1/ai/dashboard-insight", tags=["ai"])
+async def dashboard_insight(body: DashboardInsightRequest, request: Request, user: UserContext = Depends(current_user)):
+    with connection() as conn:
+        dashboard_service = DashboardService(conn)
+        resolved_date = parse_date(body.as_of) if body.as_of else dashboard_service.latest_date(user, body.scope_key)
+        snapshot = dashboard_service.dashboard(
+            user,
+            body.scope_key,
+            resolved_date,
+            grain_value(body.trend_grain),
+            grain_value(body.refund_grain),
+        )
+        api_config = SettingsService(conn).api_setting(user, include_secret=True)
+
+    insight = build_dashboard_insight(snapshot)
+    insight.update(
+        {
+            "mode": "rule_summary",
+            "configured": bool(api_config.get("configured")),
+            "degraded": False,
+            "scope_key": body.scope_key,
+            "as_of": resolved_date.isoformat(),
+            "generated_at": datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds"),
+            "request_id": request.state.request_id,
+        }
+    )
+    if api_config.get("configured") and not insight["empty"]:
+        try:
+            answer = await request_ai_completion(api_config, dashboard_insight_messages(insight))
+        except ApiError:
+            insight["degraded"] = True
+            insight["warnings"].append("AI 服务暂不可用，已展示基于数据库指标生成的规则摘要。")
+        else:
+            insight["mode"] = "ai"
+            insight["summary"] = normalize_ai_summary(answer, insight["summary"])
+    return ok(insight, request=request)
+
+
+@app.post("/api/v1/ai/customer-analysis", tags=["ai"])
+async def customer_analysis(body: CustomerAnalysisRequest, request: Request, user: UserContext = Depends(current_user)):
+    with connection() as conn:
+        snapshot = CustomerService(conn).analysis_snapshot(
+            user,
+            body.store_key,
+            body.customer_id,
+            parse_date(body.as_of),
+            include_store_refund=body.analysis_type == "store_refund",
+        )
+        api_config = SettingsService(conn).api_setting(user, include_secret=True)
+    analysis = build_customer_analysis(snapshot, body.analysis_type)
+    analysis.update(
+        {
+            "mode": "rule_summary",
+            "configured": bool(api_config.get("configured")),
+            "degraded": False,
+            "store_key": snapshot["store_key"],
+            "store_name": snapshot["store_name"],
+            "customer_id": snapshot["customer_id"],
+            "display_name": snapshot["display_name"],
+            "as_of": snapshot["as_of"],
+            "generated_at": datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds"),
+            "request_id": request.state.request_id,
+        }
+    )
+    if api_config.get("configured") and not analysis["empty"]:
+        try:
+            answer = await request_ai_completion(api_config, customer_analysis_messages(snapshot, analysis))
+        except ApiError:
+            analysis["degraded"] = True
+            analysis["warnings"].append("AI 服务暂不可用，已展示基于客户数据库指标生成的规则诊断。")
+        else:
+            analysis["mode"] = "ai"
+            analysis["summary"] = normalize_ai_summary(answer, analysis["summary"])
+    return ok(analysis, request=request)
+
+
+@app.post("/api/v1/ai/query", tags=["ai"])
+async def ai_query(body: AiQueryRequest, request: Request, user: UserContext = Depends(current_user)):
+    with connection() as conn:
+        api_config = SettingsService(conn).api_setting(user, include_secret=True)
+        data = await execute_ai_query(conn, user, body, api_config)
+    data.update(
+        {
+            "generated_at": datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds"),
+            "request_id": request.state.request_id,
+        }
+    )
+    return ok(data, request=request)
+
+
 @app.post("/api/v1/ai/chat", tags=["ai"])
 async def ai_chat(body: ChatRequest, request: Request, user: UserContext = Depends(current_user)):
+    analysis_type = infer_customer_analysis_type(body.message)
     with connection() as conn:
-        customer = CustomerService(conn).detail(user, body.store_key, body.customer_id, parse_date(body.as_of))
+        snapshot = CustomerService(conn).analysis_snapshot(
+            user,
+            body.store_key,
+            body.customer_id,
+            parse_date(body.as_of),
+            include_store_refund=analysis_type == "store_refund",
+        )
         api_config = SettingsService(conn).api_setting(user, include_secret=True)
-    half = customer["dimensions"]["half"]
-    context = (
-        f"客户：{customer['display_name']}（{customer['customer_id']}）；店铺：{customer['store_name']}；"
-        f"健康度：{customer['score']}，状态：{customer['status']}；半年销售额：{half['sales_amount']}；"
-        f"半年拿货次数：{half['purchase_count']}；风险原因：{customer.get('risk_reason') or '无'}。"
-    )
+    analysis = build_customer_analysis(snapshot, analysis_type)
+    if is_customer_communication_request(body.message):
+        answer = "本项目仅供业务部门进行内部经营分析，不生成面向客户的回复、沟通话术、营销文案或客服文本。"
+        return ok(
+            {
+                "answer": answer,
+                "mode": "rule_summary",
+                "configured": bool(api_config.get("configured")),
+                "degraded": False,
+                "evidence": analysis["evidence"],
+                "actions": analysis["actions"],
+                "warnings": analysis["warnings"],
+            },
+            request=request,
+        )
     if not api_config.get("configured"):
-        answer = f"基于截至 {body.as_of} 的数据库数据，{context} 当前未配置外部 AI 接口，因此先返回结构化经营摘要。"
-        return ok({"answer": answer, "mode": "data_summary"}, request=request)
-    messages: list[dict[str, str]] = [
-        {"role": "system", "content": "你是客户经营分析助手。只能依据提供的数据作答；数据不足时明确说明，不编造。"},
-        {"role": "system", "content": context},
-    ]
+        return ok(
+            {
+                "answer": analysis["summary"],
+                "mode": "rule_summary",
+                "configured": False,
+                "degraded": False,
+                "evidence": analysis["evidence"],
+                "actions": analysis["actions"],
+                "warnings": analysis["warnings"],
+            },
+            request=request,
+        )
+    messages = customer_analysis_messages(snapshot, analysis)
     messages.extend(item for item in body.history[-10:] if item.get("role") in {"user", "assistant"} and item.get("content"))
     messages.append({"role": "user", "content": body.message})
-    answer = await request_ai_completion(api_config, messages)
-    return ok({"answer": answer, "mode": "ai"}, request=request)
+    try:
+        answer = await request_ai_completion(api_config, messages)
+    except ApiError:
+        return ok(
+            {
+                "answer": analysis["summary"],
+                "mode": "rule_summary",
+                "configured": True,
+                "degraded": True,
+                "evidence": analysis["evidence"],
+                "actions": analysis["actions"],
+                "warnings": [*analysis["warnings"], "AI 服务暂不可用，已返回规则诊断。"],
+            },
+            request=request,
+        )
+    return ok(
+        {
+            "answer": normalize_ai_summary(answer, analysis["summary"]),
+            "mode": "ai",
+            "configured": True,
+            "degraded": False,
+            "evidence": analysis["evidence"],
+            "actions": analysis["actions"],
+            "warnings": analysis["warnings"],
+        },
+        request=request,
+    )
 
 
 if __name__ == "__main__":
