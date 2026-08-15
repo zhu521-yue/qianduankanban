@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import AiInsightPanel from "./AiInsightPanel";
+import AskDashboardDrawer from "./AskDashboardDrawer";
+import CustomerAiAssistant from "./CustomerAiAssistant";
 import CustomerDimensionPanel from "./CustomerDimensionPanel";
 import {
   ApiRequestError,
   api,
+  type AiQueryContext,
   type AiSetting,
   type AiSettingInput,
   type CustomerDetailData,
@@ -33,6 +37,36 @@ type PageConfig = {
   subtitle: string;
   scopeKey?: string;
   showCustomers?: boolean;
+};
+
+type BusinessGroupKey = Exclude<Role, "manager">;
+type GroupNavItem =
+  | { type: "scope"; scopeKey: string }
+  | { type: "platform"; label: string; scopeKey: string };
+
+const GROUP_NAV_CONFIG: Record<BusinessGroupKey, { label: string; items: GroupNavItem[] }> = {
+  distribution: {
+    label: "分销组",
+    items: [
+      { type: "scope", scopeKey: "distribution.alibaba" },
+      { type: "scope", scopeKey: "distribution.jushuitan" },
+    ],
+  },
+  private: {
+    label: "私域组",
+    items: [
+      { type: "platform", label: "有赞", scopeKey: "private.youzan" },
+      { type: "scope", scopeKey: "private.kuaituantuan" },
+    ],
+  },
+  talent: {
+    label: "达人组",
+    items: [
+      { type: "scope", scopeKey: "talent.weidian" },
+      { type: "platform", label: "抖店", scopeKey: "talent.doudian" },
+      { type: "scope", scopeKey: "talent.kuaishou" },
+    ],
+  },
 };
 
 const pagesByRole: Record<Role, PageConfig[]> = {
@@ -115,15 +149,82 @@ function LoadingPanel({ text = "正在读取数据库数据…" }: { text?: stri
 }
 
 function Sidebar({ user, pages, activePage, onNavigate, onLogout }: { user: User; pages: PageConfig[]; activePage: PageConfig; onNavigate: (page: PageConfig) => void; onLogout: () => void }) {
-  const sections = useMemo(() => [...new Set(pages.map(page => page.section))], [pages]);
+  const groupKeys = useMemo<BusinessGroupKey[]>(
+    () => user.role === "manager" ? ["distribution", "private", "talent"] : [user.role],
+    [user.role],
+  );
+  const activeScope = activePage.scopeKey || "";
+  const initialGroup = groupKeys.find(groupKey => activeScope === groupKey || activeScope.startsWith(`${groupKey}.`));
+  const initialPlatform = groupKeys
+    .flatMap(groupKey => GROUP_NAV_CONFIG[groupKey].items)
+    .find(item => item.type === "platform" && (activeScope === item.scopeKey || activeScope.startsWith(`${item.scopeKey}.`)));
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => initialGroup ? { [initialGroup]: true } : {});
+  const [expandedPlatforms, setExpandedPlatforms] = useState<Record<string, boolean>>(() => initialPlatform ? { [initialPlatform.scopeKey]: true } : {});
+  const overviewPages = pages.filter(page => page.scopeKey === "all");
+  const systemPages = pages.filter(page => page.section === "系统");
+
+  const toggleGroup = (groupKey: BusinessGroupKey) => {
+    setExpandedGroups(current => ({ ...current, [groupKey]: !current[groupKey] }));
+  };
+  const togglePlatform = (scopeKey: string) => {
+    setExpandedPlatforms(current => ({ ...current, [scopeKey]: !current[scopeKey] }));
+  };
+  const pageButton = (page: PageConfig, className = "") => (
+    <button
+      type="button"
+      key={page.route}
+      className={`${className} ${activePage.key === page.key ? "active" : ""}`.trim()}
+      onClick={() => onNavigate(page)}
+      aria-current={activePage.key === page.key ? "page" : undefined}
+    >
+      {page.navLabel}
+    </button>
+  );
+
   return (
-    <aside className="sidebar">
+    <aside className="sidebar hierarchical-sidebar">
       <div className="brand"><div className="brand-mark">AI</div><div><strong>客户看板</strong><span>Customer Intelligence</span></div></div>
-      <nav aria-label="主导航">
-        {sections.map(section => <div className="nav-group" key={section}><div className="nav-section-label">{section}</div>{pages.filter(page => page.section === section && page.section !== "系统").map(page => <button key={page.route} className={`nav-item ${activePage.key === page.key ? "active" : ""}`} onClick={() => onNavigate(page)} aria-current={activePage.key === page.key ? "page" : undefined}><span>{page.navLabel.slice(0, 1)}</span>{page.navLabel}</button>)}</div>)}
+      <nav aria-label="主导航" className="hierarchical-nav">
+        {overviewPages.length > 0 && <div className="nav-group overview-nav-group"><div className="nav-section-label">主管视图</div>{overviewPages.map(page => <button type="button" key={page.route} className={`nav-item ${activePage.key === page.key ? "active" : ""}`} onClick={() => onNavigate(page)} aria-current={activePage.key === page.key ? "page" : undefined}><span>{page.navLabel.slice(0, 1)}</span>{page.navLabel}</button>)}</div>}
+        <div className="nav-section-label">业务分组</div>
+        <div className="business-nav-list">
+          {groupKeys.map(groupKey => {
+            const group = GROUP_NAV_CONFIG[groupKey];
+            const groupExpanded = Boolean(expandedGroups[groupKey]);
+            const groupActive = activeScope === groupKey || activeScope.startsWith(`${groupKey}.`);
+            const overallPage = pages.find(page => page.scopeKey === groupKey);
+            return (
+              <div className="nav-group business-nav-group" key={groupKey}>
+                <button type="button" className={`nav-item nav-parent nav-group-toggle ${groupActive ? "contains-active" : ""}`} onClick={() => toggleGroup(groupKey)} aria-expanded={groupExpanded}>
+                  <span>{group.label.slice(0, 1)}</span><b>{group.label}</b><i aria-hidden="true">{groupExpanded ? "⌄" : "›"}</i>
+                </button>
+                {groupExpanded && <div className="nav-children group-nav-children">
+                  {overallPage && pageButton(overallPage, "nav-child-page nav-overall-page")}
+                  {group.items.map(item => {
+                    if (item.type === "scope") {
+                      const page = pages.find(candidate => candidate.scopeKey === item.scopeKey);
+                      return page ? pageButton(page, "nav-child-page") : null;
+                    }
+                    const platformPages = pages.filter(page => page.scopeKey === item.scopeKey || page.scopeKey?.startsWith(`${item.scopeKey}.`));
+                    if (platformPages.length === 0) return null;
+                    const platformExpanded = Boolean(expandedPlatforms[item.scopeKey]);
+                    const platformActive = activeScope === item.scopeKey || activeScope.startsWith(`${item.scopeKey}.`);
+                    return <div className="nav-platform" key={item.scopeKey}>
+                      <button type="button" className={`nav-platform-toggle ${platformActive ? "contains-active" : ""}`} onClick={() => togglePlatform(item.scopeKey)} aria-expanded={platformExpanded}>
+                        <span>{item.label}</span><i aria-hidden="true">{platformExpanded ? "⌄" : "›"}</i>
+                      </button>
+                      {platformExpanded && <div className="nav-platform-children">{platformPages.map(page => pageButton(page, "nav-child-page"))}</div>}
+                    </div>;
+                  })}
+                </div>}
+              </div>
+            );
+          })}
+        </div>
       </nav>
       <div className="sidebar-bottom">
-        {pages.filter(page => page.section === "系统").map(page => <button key={page.route} className={`nav-item ${activePage.key === page.key ? "active" : ""}`} onClick={() => onNavigate(page)} aria-current={activePage.key === page.key ? "page" : undefined}><span>{page.kind === "upload" ? "⇧" : "⚙"}</span>{page.navLabel}</button>)}
+        <div className="nav-section-label">系统</div>
+        {systemPages.map(page => <button type="button" key={page.route} className={`nav-item ${activePage.key === page.key ? "active" : ""}`} onClick={() => onNavigate(page)} aria-current={activePage.key === page.key ? "page" : undefined}><span>{page.kind === "upload" ? "⇧" : "⚙"}</span>{page.navLabel}</button>)}
         <div className="user-card"><div className="avatar">{user.display_name.slice(0, 1)}</div><div><strong>{user.display_name}</strong><span>数据库实时连接</span></div><button className="user-logout" onClick={onLogout} title="退出登录" aria-label="退出登录">•••</button></div>
       </div>
     </aside>
@@ -222,7 +323,7 @@ function CustomerTable({ scopeKey, asOf, onSelect }: { scopeKey: string; asOf: s
   );
 }
 
-function DashboardPage({ page, onSelect }: { page: PageConfig; onSelect: (customer: CustomerListItem) => void }) {
+function DashboardPage({ page, onSelect, onOpenSettings, onContextChange }: { page: PageConfig; onSelect: (customer: CustomerListItem) => void; onOpenSettings: () => void; onContextChange: (context: AiQueryContext) => void }) {
   const [selectedDate, setSelectedDate] = useState("");
   const [trendGrain, setTrendGrain] = useState<Grain>("month");
   const [refundGrain, setRefundGrain] = useState<Grain>("half");
@@ -233,17 +334,18 @@ function DashboardPage({ page, onSelect }: { page: PageConfig; onSelect: (custom
     let active = true;
     setLoading(true);
     api.dashboard({ scope_key: page.scopeKey!, as_of: selectedDate || undefined, trend_grain: trendGrain, refund_grain: refundGrain })
-      .then(value => { if (active) { setData(value); setSelectedDate(current => current || value.as_of); setError(""); } })
+      .then(value => { if (active) { setData(value); setSelectedDate(current => current || value.as_of); setError(""); onContextChange({ scope_key: page.scopeKey!, as_of: value.as_of, grain: trendGrain, route: page.route }); } })
       .catch(reason => { if (active) setError(errorText(reason)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [page.scopeKey, selectedDate, trendGrain, refundGrain]);
+  }, [page.scopeKey, page.route, selectedDate, trendGrain, refundGrain, onContextChange]);
   const hasPresaleStore = data?.store_keys.includes("weidian") && data.presale.available;
   return (
     <main className="main-content">
       <header className="topbar"><div><Breadcrumbs items={page.breadcrumb} /><h1>{page.title}</h1><p>{page.subtitle}{data ? ` · 当前统计至 ${dateText(data.as_of)}` : ""}</p></div><div className="header-actions"><div className="sync-pill"><i></i>数据更新至 {dateText(data?.latest_data_date)}</div><label className="date-control"><span>统计日期</span><input type="date" value={selectedDate} max={data?.latest_data_date || undefined} onChange={event => setSelectedDate(event.target.value)} aria-label="选择看板统计日期" /></label></div></header>
       {error && <div className="api-error-banner">{error}</div>}
       {loading && !data ? <LoadingPanel /> : data && <>
+        <AiInsightPanel scopeKey={page.scopeKey!} asOf={data.as_of} trendGrain={trendGrain} refundGrain={refundGrain} onOpenSettings={onOpenSettings} />
         <section className="kpi-grid">{data.kpis.map((kpi, index) => <article className={`kpi-card ${index === 0 ? "accent" : ""}`} key={kpi.key}><div className={`kpi-icon ${index === 1 ? "blue" : index === 2 ? "green" : index === 3 ? "purple" : ""}`}>{["¥", "月", "客", "品"][index]}</div><span>{kpi.label}</span><strong>{kpi.key.includes("sales") ? compactMoney(kpi.value) : Number(kpi.value).toLocaleString()}</strong><small className={kpi.change !== null && kpi.change < 0 ? "down" : ""}><b>{kpi.change === null ? "—" : `${kpi.change >= 0 ? "+" : ""}${(kpi.change * 100).toFixed(2)}%`}</b> · {kpi.period}</small></article>)}</section>
         <section className="dashboard-grid"><SalesPanel data={data} grain={trendGrain} onGrainChange={setTrendGrain} /><HealthPanel data={data} /><ProductPanel data={data} /></section>
         <section className={`operations-grid ${hasPresaleStore ? "has-presale" : ""}`}><RefundPanel data={data} grain={refundGrain} onGrainChange={setRefundGrain} />{hasPresaleStore && <PresalePanel data={data} />}</section>
@@ -254,33 +356,14 @@ function DashboardPage({ page, onSelect }: { page: PageConfig; onSelect: (custom
   );
 }
 
-function CustomerDetailPage({ page, target, onBack }: { page: PageConfig; target: { storeKey: string; customerId: string }; onBack: () => void }) {
+function CustomerDetailPage({ page, target, onBack, onOpenSettings }: { page: PageConfig; target: { storeKey: string; customerId: string }; onBack: () => void; onOpenSettings: () => void }) {
   const [customer, setCustomer] = useState<CustomerDetailData | null>(null);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const [chat, setChat] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
-  const [sending, setSending] = useState(false);
   useEffect(() => {
     let active = true;
     api.customer(target.storeKey, target.customerId).then(value => { if (active) setCustomer(value); }).catch(reason => { if (active) setError(errorText(reason)); });
     return () => { active = false; };
   }, [target.storeKey, target.customerId]);
-  const send = async () => {
-    if (!customer || !message.trim() || sending) return;
-    const userMessage = message.trim();
-    const history = chat;
-    setChat(items => [...items, { role: "user", content: userMessage }]);
-    setMessage("");
-    setSending(true);
-    try {
-      const result = await api.chat({ store_key: customer.store_key, customer_id: customer.customer_id, as_of: customer.as_of, message: userMessage, history });
-      setChat(items => [...items, { role: "assistant", content: result.answer }]);
-    } catch (reason) {
-      setChat(items => [...items, { role: "assistant", content: errorText(reason) }]);
-    } finally {
-      setSending(false);
-    }
-  };
   if (error) return <main className="main-content detail-content"><header className="detail-header"><button className="back-button" onClick={onBack}>← 返回客户列表</button></header><div className="api-error-banner">{error}</div></main>;
   if (!customer) return <main className="main-content detail-content"><header className="detail-header"><button className="back-button" onClick={onBack}>← 返回客户列表</button></header><LoadingPanel text="正在读取客户数据库详情…" /></main>;
   const half = customer.dimensions.half;
@@ -290,7 +373,7 @@ function CustomerDetailPage({ page, target, onBack }: { page: PageConfig; target
       <header className="detail-header"><button className="back-button" onClick={onBack}>← 返回客户列表</button><Breadcrumbs items={[...page.breadcrumb, "客户详情"]} /><span className="detail-date">统计截至 {dateText(customer.as_of)}</span></header>
       <section className="customer-hero"><div className="customer-avatar">{(customer.display_name || customer.customer_id).slice(0, 1)}</div><div><div className="hero-title"><h1>{customer.display_name || customer.customer_id}</h1><StatusBadge status={customer.status} /></div><p>客户ID <strong>{customer.customer_id}</strong> · {customer.store_name}</p></div><div className="hero-score"><span>健康度</span><strong>{customer.score.toFixed(0)}</strong><small>/ 100</small></div></section>
       <section className="detail-kpis"><article><span>半年销售额</span><strong>{money(half.sales_amount)}</strong><small>{dateText(half.start)}—{dateText(half.end)}</small></article><article><span>半年拿货次数</span><strong>{half.purchase_count.toLocaleString()} 次</strong><small>数据库周期聚合</small></article><article><span>本月销售额</span><strong>{money(month.sales_amount)}</strong><small>{dateText(month.start)}—{dateText(month.end)}</small></article><article><span>半年主要商品</span><strong>{half.products.length} 种</strong><small>数据库返回 Top {half.products.length}</small></article></section>
-      <div className="detail-layout"><section className="detail-data"><CustomerDimensionPanel customer={customer} /></section><aside className="ai-panel"><div className="ai-header"><div className="ai-mark">AI</div><div><strong>客户分析助手</strong><span>基于当前客户数据库数据</span></div><i></i></div><div className="ai-context"><span>正在分析</span><strong>{customer.display_name || customer.customer_id}</strong><small>{customer.status} · 健康度 {customer.score.toFixed(0)}</small></div><div className="chat-list">{chat.map((item, index) => <div key={`${item.role}-${index}`} className={item.role === "user" ? "chat-user" : "chat-ai"}>{item.role === "assistant" && <b>AI</b>}<p>{item.content}</p></div>)}{chat.length === 0 && <div className="chat-ai"><b>AI</b><p>可询问该客户的销售、拿货、健康状态与主要商品。</p></div>}</div><div className="suggestions"><button onClick={() => setMessage("这个客户最近表现怎么样？")}>最近表现</button><button onClick={() => setMessage("主要销售哪些商品？")}>主要商品</button></div><div className="chat-input"><textarea value={message} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder="向AI询问这个客户…" aria-label="向AI询问这个客户" /><button onClick={() => void send()} disabled={sending} aria-label="发送消息">{sending ? "…" : "↑"}</button></div><small className="ai-disclaimer">回答上下文来自当前客户的真实数据库记录</small></aside></div>
+      <div className="detail-layout"><section className="detail-data"><CustomerDimensionPanel customer={customer} /></section><CustomerAiAssistant key={`${customer.store_key}-${customer.customer_id}`} customer={customer} onOpenSettings={onOpenSettings} /></div>
     </main>
   );
 }
@@ -630,6 +713,8 @@ export default function Home() {
   const [ready, setReady] = useState(false);
   const [activePage, setActivePage] = useState<PageConfig | null>(null);
   const [customerTarget, setCustomerTarget] = useState<{ storeKey: string; customerId: string } | null>(null);
+  const [dashboardContext, setDashboardContext] = useState<AiQueryContext | null>(null);
+  const reportDashboardContext = useCallback((context: AiQueryContext) => setDashboardContext(context), []);
   useEffect(() => {
     api.session().then(result => setUser(result.user)).catch(() => setUser(null)).finally(() => setReady(true));
   }, []);
@@ -672,6 +757,14 @@ export default function Home() {
     window.location.hash = `${activePage.route}/customer/${encodeURIComponent(customer.store_key)}/${encodeURIComponent(customer.customer_id)}`;
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const content = customerTarget ? <CustomerDetailPage page={activePage} target={customerTarget} onBack={() => navigate(activePage)} /> : activePage.kind === "dashboard" ? <DashboardPage key={activePage.route} page={activePage} onSelect={selectCustomer} /> : activePage.kind === "upload" ? <UploadPage page={activePage} /> : <SettingsPage page={activePage} user={user} />;
-  return <div className="app-shell"><Sidebar user={user} pages={pages} activePage={activePage} onNavigate={navigate} onLogout={() => void logout()} />{content}</div>;
+  const openSettings = () => {
+    const settingsPage = pages.find(page => page.kind === "settings");
+    if (settingsPage) navigate(settingsPage);
+  };
+  const defaultScope = user.role === "manager" ? "all" : user.group_key || user.role;
+  const askContext: AiQueryContext = dashboardContext && dashboardContext.scope_key === activePage.scopeKey
+    ? { ...dashboardContext, route: activePage.route }
+    : { scope_key: activePage.scopeKey || defaultScope, grain: "month", route: activePage.route };
+  const content = customerTarget ? <CustomerDetailPage page={activePage} target={customerTarget} onBack={() => navigate(activePage)} onOpenSettings={openSettings} /> : activePage.kind === "dashboard" ? <DashboardPage key={activePage.route} page={activePage} onSelect={selectCustomer} onOpenSettings={openSettings} onContextChange={reportDashboardContext} /> : activePage.kind === "upload" ? <UploadPage page={activePage} /> : <SettingsPage page={activePage} user={user} />;
+  return <div className="app-shell"><Sidebar user={user} pages={pages} activePage={activePage} onNavigate={navigate} onLogout={() => void logout()} />{content}<AskDashboardDrawer context={askContext} onOpenSettings={openSettings} /></div>;
 }

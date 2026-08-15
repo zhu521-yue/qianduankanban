@@ -89,6 +89,18 @@ class DashboardRepository:
     def sales_amount(self, stores: Iterable[str], grain: Grain, window: PeriodWindow) -> Decimal:
         return sum((self._sum_for_store(STORES[key], grain, window) for key in stores), Decimal(0))
 
+    def sales_amount_by_store(self, stores: Iterable[str], grain: Grain, window: PeriodWindow) -> list[dict[str, Any]]:
+        table = SALES_SPECS[grain][0]
+        return [
+            {
+                "store_key": key,
+                "store_name": STORES[key].name,
+                "amount": self._sum_for_store(STORES[key], grain, window),
+                "source": f"{STORES[key].schema_name}.{table}",
+            }
+            for key in stores
+        ]
+
     def active_customer_count(self, stores: Iterable[str], grain: Grain, window: PeriodWindow) -> int:
         total = 0
         table, start_col, end_col, amount_col, _ = CUSTOMER_SPECS[grain]
@@ -165,6 +177,20 @@ class DashboardRepository:
             total += Decimal(self.conn.execute(query, (window.start, window.end)).fetchone()["amount"])
         return total
 
+    def refund_amount_by_store(self, stores: Iterable[str], grain: Grain, window: PeriodWindow) -> list[dict[str, Any]]:
+        if grain not in REFUND_SPECS:
+            return []
+        table, amount_col = REFUND_SPECS[grain]
+        rows: list[dict[str, Any]] = []
+        for key in stores:
+            store = STORES[key]
+            query = sql.SQL("SELECT COALESCE(SUM({}), 0) AS amount FROM {}.{} WHERE period_start = %s AND period_end = %s").format(
+                sql.Identifier(amount_col), sql.Identifier(store.schema_name), sql.Identifier(table)
+            )
+            amount = Decimal(self.conn.execute(query, (window.start, window.end)).fetchone()["amount"])
+            rows.append({"store_key": key, "store_name": store.name, "amount": amount, "source": f"{store.schema_name}.{table}"})
+        return rows
+
     def presale_summary(self, stores: Iterable[str], grain: Grain, window: PeriodWindow, limit: int = 5) -> dict[str, Any]:
         totals: dict[str, dict[str, Decimal]] = defaultdict(lambda: {"quantity": Decimal(0), "amount": Decimal(0)})
         if grain not in PRESALE_SPECS:
@@ -190,14 +216,24 @@ class DashboardRepository:
         }
 
     def latest_data_date(self, stores: Iterable[str]) -> date | None:
-        values: list[date] = []
+        values = [row["latest_data_date"] for row in self.latest_data_dates(stores) if row["latest_data_date"]]
+        return max(values) if values else None
+
+    def latest_data_dates(self, stores: Iterable[str]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
         for key in stores:
             store = STORES[key]
             query = sql.SQL("SELECT MAX(transaction_date) AS value FROM {}.daily_sales").format(sql.Identifier(store.schema_name))
             value = self.conn.execute(query).fetchone()["value"]
-            if value:
-                values.append(value)
-        return max(values) if values else None
+            rows.append(
+                {
+                    "store_key": key,
+                    "store_name": store.name,
+                    "latest_data_date": value,
+                    "source": f"{store.schema_name}.daily_sales",
+                }
+            )
+        return rows
 
 
 class CustomerRepository:

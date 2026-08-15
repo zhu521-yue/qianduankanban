@@ -55,6 +55,39 @@ export type DashboardData = {
   presale: { available: boolean; period: string; amount: string; quantity: string; product_count: number; products: ProductRecord[] };
 };
 
+export type DashboardInsightEvidence = {
+  key: string;
+  label: string;
+  value: string;
+  period: string;
+  source: string;
+  direction: "positive" | "negative" | "neutral";
+  severity: "high" | "medium" | "info";
+  description: string;
+};
+
+export type DashboardInsightAction = {
+  priority: "high" | "medium" | "low";
+  title: string;
+  description: string;
+};
+
+export type DashboardInsightData = {
+  mode: "rule_summary" | "ai";
+  configured: boolean;
+  degraded: boolean;
+  empty: boolean;
+  headline: string;
+  summary: string;
+  evidence: DashboardInsightEvidence[];
+  actions: DashboardInsightAction[];
+  warnings: string[];
+  scope_key: string;
+  as_of: string;
+  generated_at: string;
+  request_id: string;
+};
+
 export type CustomerListItem = {
   store_key: string;
   store_name: string;
@@ -100,6 +133,102 @@ export type CustomerDetailData = {
   suggested_action: string | null;
   as_of: string;
   dimensions: Record<Grain, CustomerDimension>;
+};
+
+export type CustomerAnalysisType = "overview" | "recent_performance" | "health_reason" | "products" | "store_refund" | "follow_up";
+
+export type CustomerAnalysisEvidence = {
+  key: string;
+  label: string;
+  value: string;
+  value_type: "currency" | "percentage" | "text" | "number";
+  period: string;
+  source: string;
+  direction: "positive" | "negative" | "neutral";
+  severity: "high" | "medium" | "info";
+  description: string;
+};
+
+export type CustomerAnalysisAction = {
+  priority: "high" | "medium" | "low";
+  title: string;
+  description: string;
+};
+
+export type CustomerAnalysisData = {
+  mode: "rule_summary" | "ai";
+  configured: boolean;
+  degraded: boolean;
+  empty: boolean;
+  internal_only: boolean;
+  analysis_type: CustomerAnalysisType;
+  conclusion: string;
+  summary: string;
+  evidence: CustomerAnalysisEvidence[];
+  actions: CustomerAnalysisAction[];
+  warnings: string[];
+  store_key: string;
+  store_name: string;
+  customer_id: string;
+  display_name: string;
+  as_of: string;
+  generated_at: string;
+  request_id: string;
+};
+
+export type AiQueryContext = {
+  scope_key: string;
+  as_of?: string;
+  grain: Grain;
+  route?: string;
+};
+
+export type AiQueryEvidence = {
+  key: string;
+  label: string;
+  value: string;
+  value_type: "currency" | "percentage" | "number" | "text";
+  period: string;
+  source: string;
+};
+
+export type AiQueryResult = {
+  mode: "rule_summary" | "ai";
+  configured: boolean;
+  degraded: boolean;
+  empty: boolean;
+  answer: string;
+  query_plan: {
+    metric_key: string;
+    scope_key: string;
+    grain: Grain;
+    as_of: string;
+    group_by: string;
+    comparison: string;
+    filters: Record<string, string>;
+    limit: number;
+    output_type: string;
+    sort_by: string;
+    sort_direction: string;
+  };
+  evidence: AiQueryEvidence[];
+  table: {
+    columns: { key: string; label: string; type: "text" | "currency" | "percentage" | "number" | "date" }[];
+    rows: Record<string, unknown>[];
+  };
+  chart: {
+    type: "line" | "bar";
+    x_key: string;
+    y_key: string;
+    series: { x: string; y: string | number | null }[];
+  } | null;
+  scope: { scope_key: string; store_keys: string[]; as_of: string; grain: Grain };
+  warnings: string[];
+  target: { route: string; module: string };
+  plan_source: "ai" | "rule";
+  supported_questions: string[];
+  generated_at: string;
+  request_id: string;
 };
 
 export type HealthRule = {
@@ -282,14 +411,17 @@ export const api = {
   logout: () => request<null>("/auth/logout", { method: "POST" }),
   meta: () => request<MetaOptions>("/meta/options"),
   dashboard: (values: { scope_key: string; as_of?: string; trend_grain: Grain; refund_grain: Grain }) => request<DashboardData>(`/dashboard?${queryString(values)}`),
+  dashboardInsight: (values: { scope_key: string; as_of?: string; trend_grain: Grain; refund_grain: Grain }, signal?: AbortSignal) => request<DashboardInsightData>("/ai/dashboard-insight", { method: "POST", body: JSON.stringify(values), signal }),
   customers: (values: { scope_key: string; as_of?: string; grain?: Grain; search?: string; page?: number; page_size?: number }) => request<CustomerListData>(`/customers?${queryString(values)}`),
   customer: (storeKey: string, customerId: string, asOf?: string) => request<CustomerDetailData>(`/customers/${encodeURIComponent(storeKey)}/${encodeURIComponent(customerId)}?${queryString({ as_of: asOf })}`),
+  customerAnalysis: (values: { store_key: string; customer_id: string; as_of: string; analysis_type: CustomerAnalysisType }, signal?: AbortSignal) => request<CustomerAnalysisData>("/ai/customer-analysis", { method: "POST", body: JSON.stringify(values), signal }),
+  aiQuery: (values: { question: string; context: AiQueryContext; history: { role: "user" | "assistant"; content: string }[] }, signal?: AbortSignal) => request<AiQueryResult>("/ai/query", { method: "POST", body: JSON.stringify(values), signal }),
   healthRules: () => request<{ groups: HealthRuleGroup[] }>("/settings/health-rules"),
   updateHealthRules: (rules: Pick<HealthRule, "customer_health_status" | "state_instructions" | "follow_up_action">[]) => request<HealthRuleSaveResult>("/settings/health-rules", { method: "PUT", body: JSON.stringify({ rules }) }),
   aiSetting: () => request<AiSetting>("/settings/ai"),
   testAiSetting: (values: AiSettingInput) => request<AiSettingTestResult>("/settings/ai/test", { method: "POST", body: JSON.stringify(values) }),
   updateAiSetting: (values: AiSettingInput) => request<AiSetting>("/settings/ai", { method: "PUT", body: JSON.stringify(values) }),
-  chat: (values: { store_key: string; customer_id: string; as_of: string; message: string; history: { role: "user" | "assistant"; content: string }[] }) => request<{ answer: string; mode: string }>("/ai/chat", { method: "POST", body: JSON.stringify(values) }),
+  chat: (values: { store_key: string; customer_id: string; as_of: string; message: string; history: { role: "user" | "assistant"; content: string }[] }) => request<{ answer: string; mode: "rule_summary" | "ai"; configured: boolean; degraded: boolean; evidence: CustomerAnalysisEvidence[]; actions: CustomerAnalysisAction[]; warnings: string[] }>("/ai/chat", { method: "POST", body: JSON.stringify(values) }),
   uploadPreview: (storeKey: string, file: File) => {
     const form = new FormData();
     form.set("store_key", storeKey);
