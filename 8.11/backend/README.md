@@ -72,12 +72,12 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 启动：
 
 ```powershell
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8011
 ```
 
-- API：`http://127.0.0.1:8000/api/v1`
-- OpenAPI：`http://127.0.0.1:8000/api/docs`
-- 健康检查：`http://127.0.0.1:8000/api/v1/health`
+- API：`http://127.0.0.1:8011/api/v1`
+- OpenAPI：`http://127.0.0.1:8011/api/docs`
+- 健康检查：`http://127.0.0.1:8011/api/v1/health`
 
 运行测试：
 

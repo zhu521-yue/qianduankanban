@@ -89,7 +89,7 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 
 ## Useful Commands
 
-- `npm run dev`: start local development
+- `npm run dev`: start local development on `http://127.0.0.1:3011`
 - `npm run build`: verify the vinext build output
 - `npm test`: build the starter and verify its rendered loading skeleton
 - `npm run db:generate`: generate Drizzle migrations after schema changes

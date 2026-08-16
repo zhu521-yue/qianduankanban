@@ -57,9 +57,13 @@ export default defineConfig(async ({ mode }) => {
         projectEnv.NEXT_PUBLIC_API_PORT ?? "",
       ),
     },
-    server: isCodexSeatbeltSandbox
-      ? { watch: { useFsEvents: false, usePolling: true } }
-      : undefined,
+    server: {
+      host: "127.0.0.1",
+      port: 3011,
+      ...(isCodexSeatbeltSandbox
+        ? { watch: { useFsEvents: false, usePolling: true } }
+        : {}),
+    },
     plugins: [
       vinext(),
       sites(),
